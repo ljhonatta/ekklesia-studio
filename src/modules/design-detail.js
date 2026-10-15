@@ -11,6 +11,7 @@ export async function render(el, [idStr]) {
   if (!design) { el.innerHTML = empty('Design não encontrado', 'Ele pode ter sido excluído.', '<a class="btn" href="#/designs">Voltar à biblioteca</a>'); return; }
   let versions = await db.versions.where('designId').equals(id).sortBy('n');
   const mockups = await db.mockups.where('designId').equals(id).reverse().sortBy('updatedAt');
+  const pfs = await db.productionFiles.where('designId').equals(id).toArray();
   let viewing = design.currentVersionId;
   let bg = 'checker';
 
@@ -43,7 +44,9 @@ export async function render(el, [idStr]) {
         <div class="panel">
           <h3>Pronto para produção?</h3>
           <div id="prod"></div>
-          <p class="hint">Isto é a <b>arte</b>. O arquivo técnico para a gráfica fica separado em Arquivos de Produção (Fase 2).</p>
+          <p class="hint">Isto é a <b>arte</b>. O arquivo técnico para a gráfica fica separado, em Arquivos de Produção.</p>
+          ${pfs.length ? `<ul class="plain">${pfs.map((f) => `<li><a class="link" href="#/producao/${f.id}">${esc(f.name)} · ${f.widthCm}×${f.heightCm} cm</a></li>`).join('')}</ul>` : ''}
+          <div class="actions-row"><a class="btn sm" id="mkProd" href="#">Criar arquivo de produção</a><a class="btn sm ghost" href="#/produto/new?design=${id}">Cadastrar produto</a></div>
         </div>
       </aside>
     </div>
@@ -61,6 +64,7 @@ export async function render(el, [idStr]) {
     const v = current();
     $('#art', el).src = objURL(artBlob(v));
     $('#apply', el).href = `#/mockup/new?design=${id}&version=${v.id}`;
+    $('#mkProd', el).href = `#/producao/new?design=${id}&version=${v.id}`;
     $('#meta', el).innerHTML = `
       <span>V${v.n}</span><span>${esc(v.fileName)}</span><span>${v.width} × ${v.height} px</span>
       <span>${fmtBytes(v.size)}</span><span>${(v.mime.split('/')[1] || '').replace('svg+xml', 'svg').toUpperCase()}</span>`;

@@ -1,8 +1,9 @@
 import { db, currentVersions } from '../db.js';
 import { designCard, mockupCard, pageHead, empty, ICONS } from '../ui.js';
+import { esc } from '../util.js';
 
 const FLOW = [
-  ['Ideia', true], ['Arte', true], ['Mockup', true], ['Produto', false], ['Produção', false], ['Catálogo', false], ['Venda', false],
+  ['Ideia', true], ['Arte', true], ['Mockup', true], ['Produção', true], ['Produto', true], ['Catálogo', true], ['Venda', false],
 ];
 
 export async function render(el) {
@@ -10,6 +11,8 @@ export async function render(el) {
     db.designs.count(), db.versions.count(), db.mockups.count(), db.products.count(),
     db.designs.where('status').equals('publicado').count(),
   ]);
+  const nActive = await db.products.where('status').equals('ativo').count();
+  const lastCat = (await db.catalogs.reverse().sortBy('updatedAt'))[0];
   const recent = await db.designs.orderBy('updatedAt').reverse().limit(6).toArray();
   const vs = await currentVersions(recent);
   const recentMockups = await db.mockups.orderBy('updatedAt').reverse().limit(4).toArray();
@@ -28,7 +31,7 @@ export async function render(el) {
     <section class="stats">
       ${stat(nDesigns, 'Designs', `${nVersions} versões`)}
       ${stat(nMockups, 'Mockups gerados')}
-      ${stat(nProducts, 'Produtos cadastrados', 'Fase 2')}
+      ${stat(nProducts, 'Produtos cadastrados', `${nActive} ativos`)}
       ${stat(published, 'Publicados')}
     </section>
     <section class="section">
@@ -43,6 +46,7 @@ export async function render(el) {
     </section>` : ''}
     <section class="section">
       <div class="section-head"><h2>Catálogo atual</h2></div>
-      <div class="note-card">O construtor de catálogo, com PDF clicável e QR Code, chega na Fase 2.</div>
+      ${lastCat ? `<a class="cat-row" href="#/catalogo/${lastCat.id}"><span class="cat-cover"><b>${esc(lastCat.title || 'Sem título')}</b></span><span><b>${esc(lastCat.title || 'Sem título')}</b><small>${lastCat.productIds?.length || 0} peças · abrir e exportar PDF</small></span></a>`
+        : `<div class="note-card">Nenhum catálogo ainda. <a class="link" href="#/catalogo">Criar catálogo</a></div>`}
     </section>`;
 }

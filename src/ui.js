@@ -22,10 +22,10 @@ export const NAV = [
   { id: 'dashboard', label: 'Dashboard', href: '#/' },
   { id: 'criar', label: 'Criar Arte', href: '#/criar' },
   { id: 'designs', label: 'Meus Designs', href: '#/designs' },
-  { id: 'produtos', label: 'Produtos', href: '#/produtos', soon: 'F2' },
+  { id: 'produtos', label: 'Produtos', href: '#/produtos' },
   { id: 'mockups', label: 'Mockups', href: '#/mockups' },
-  { id: 'producao', label: 'Arquivos de Produção', href: '#/producao', soon: 'F2' },
-  { id: 'catalogo', label: 'Catálogo', href: '#/catalogo', soon: 'F2' },
+  { id: 'producao', label: 'Arquivos de Produção', href: '#/producao' },
+  { id: 'catalogo', label: 'Catálogo', href: '#/catalogo' },
   { id: 'config', label: 'Configurações', href: '#/config' },
 ];
 
@@ -66,3 +66,24 @@ export const pageHead = ({ eyebrow, title, lede = '', actions = '' }) => `
 
 export const empty = (title, text, action = '') => `
   <div class="empty"><h3>${title}</h3><p>${text}</p>${action}</div>`;
+
+// Modal para escolher um design da biblioteca. Resolve com o id ou null.
+export async function pickDesign(title = 'Escolher arte') {
+  const { db, currentVersions } = await import('./db.js');
+  const { modal } = await import('./util.js');
+  const designs = await db.designs.orderBy('updatedAt').reverse().toArray();
+  if (!designs.length) {
+    const go = await modal({ title: 'Nenhuma arte ainda', body: '<p>Envie uma arte primeiro.</p>', actions: [{ label: 'Cancelar', value: false }, { label: 'Enviar arte', value: true, kind: 'primary' }] });
+    if (go) location.hash = '#/criar';
+    return null;
+  }
+  const vs = await currentVersions(designs);
+  return modal({
+    title, wide: true, actions: [],
+    body: `<div class="pick-grid">${designs.map((d) => `
+      <button class="pick" data-pick="${d.id}"><span class="thumb checker">${vs.get(d.id) ? `<img src="${objURL(vs.get(d.id).thumb)}" alt="">` : ''}</span><span>${esc(d.name)}</span><small>V${d.versionCount}</small></button>`).join('')}</div>`,
+    onOpen: (m, close) => m.addEventListener('click', (e) => { const b = e.target.closest('[data-pick]'); if (b) close(+b.dataset.pick); }),
+  });
+}
+
+export const pill = (cls, label) => `<span class="pill pill-${esc(cls)}">${esc(label)}</span>`;

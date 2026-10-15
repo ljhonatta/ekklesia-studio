@@ -7,7 +7,11 @@ import * as designDetail from './modules/design-detail.js';
 import * as mockups from './modules/mockups.js';
 import * as mockupEditor from './modules/mockup-editor.js';
 import * as settings from './modules/settings.js';
-import { produtos, producao, catalogo } from './modules/upcoming.js';
+import * as production from './modules/production.js';
+import * as products from './modules/products.js';
+import * as catalog from './modules/catalog.js';
+
+const r = (fn) => ({ render: fn });
 
 const ROUTES = [
   [/^$/, dashboard, 'dashboard'],
@@ -16,9 +20,15 @@ const ROUTES = [
   [/^design\/(\d+)$/, designDetail, 'designs'],
   [/^mockups$/, mockups, 'mockups'],
   [/^mockup\/(new|\d+)$/, mockupEditor, 'mockups'],
-  [/^produtos$/, produtos, 'produtos'],
-  [/^producao$/, producao, 'producao'],
-  [/^catalogo$/, catalogo, 'catalogo'],
+  [/^produtos$/, r(products.list), 'produtos'],
+  [/^produto\/(new)$/, r(products.edit), 'produtos'],
+  [/^produto\/(\d+)\/editar$/, r(products.edit), 'produtos'],
+  [/^produto\/(\d+)$/, r(products.page), 'produtos'],
+  [/^producao$/, r(production.list), 'producao'],
+  [/^producao\/new$/, r(production.create), 'producao'],
+  [/^producao\/(\d+)$/, r(production.detail), 'producao'],
+  [/^catalogo$/, r(catalog.list), 'catalogo'],
+  [/^catalogo\/(\d+)$/, r(catalog.editor), 'catalogo'],
   [/^config$/, settings, 'config'],
 ];
 
