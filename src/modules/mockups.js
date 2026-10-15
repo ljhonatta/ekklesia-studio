@@ -1,7 +1,7 @@
 import { db } from '../db.js';
 import { $, $$, esc, objURL, toast, modal, confirmDialog } from '../util.js';
 import { mockupCard, pageHead, empty, ICONS } from '../ui.js';
-import { TIPOS_FOTO, VISTAS_FOTO, MODELOS, vistaLabel, photoLabel, importImages, importPack } from '../photos.js';
+import { TIPOS_FOTO, VISTAS_FOTO, MODELOS, vistaLabel, photoLabel, importImages, importPack, detectAll } from '../photos.js';
 
 export async function render(el, _p, query) {
   let tab = query.tab === 'pecas' ? 'pecas' : 'salvos';
@@ -34,6 +34,7 @@ export async function render(el, _p, query) {
     }
     const shown = photos.filter((p) => (!fTipo || p.tipo === fTipo) && (!fVista || p.vista === fVista) && (!fModelo || p.modelo === fModelo));
     const count = (k, v) => photos.filter((p) => p[k] === v).length;
+    const pending = photos.filter((p) => !p.pose).length;
     $('#body', el).innerHTML = `
       <div class="toolbar">
         <div class="filters">
@@ -42,6 +43,7 @@ export async function render(el, _p, query) {
           <select id="fModelo"><option value="">Masculino e feminino</option>${MODELOS.map((m) => `<option value="${m.id}" ${m.id === fModelo ? 'selected' : ''}>${m.label}</option>`).join('')}</select>
         </div>
         <div class="actions-row tight">
+          ${photos.length ? `<button class="btn" id="aiAll" title="Detecta ombros, quadril e braços de cada foto para posicionar as áreas de estampa">Detectar áreas com IA${pending ? ` (${pending})` : ''}</button>` : ''}
           <label class="btn">${ICONS.upload}<span>Importar fotos</span><input type="file" id="impImgs" accept="image/*" multiple hidden></label>
           <label class="btn">${ICONS.upload}<span>Importar pacote</span><input type="file" id="impPack" accept=".json,application/json" hidden></label>
         </div>
@@ -51,12 +53,24 @@ export async function render(el, _p, query) {
         <button class="card photo-card" data-edit="${p.id}">
           <div class="thumb"><img src="${objURL(p.thumb)}" alt="" loading="lazy"></div>
           <div class="card-body"><div class="card-title">${esc(photoLabel(p))}</div>
-            <div class="card-meta"><span>${vistaLabel(p.vista)}${p.modelo ? ` · ${p.modelo === 'feminino' ? 'Fem.' : 'Masc.'}` : ''}</span>${p.corHex ? `<span class="swatch-dot" style="background:${esc(p.corHex)}"></span>` : ''}</div></div>
+            <div class="card-meta"><span>${p.pose?.ok ? '<i class="dot ok" title="Áreas detectadas por IA"></i> ' : ''}${vistaLabel(p.vista)}${p.modelo ? ` · ${p.modelo === 'feminino' ? 'Fem.' : 'Masc.'}` : ''}</span>${p.corHex ? `<span class="swatch-dot" style="background:${esc(p.corHex)}"></span>` : ''}</div></div>
         </button>`).join('')}</div>` : empty('Nada por aqui', 'Nenhuma foto com esses filtros.')
         : empty('Nenhuma peça real ainda', 'Importe as fotos das peças do fornecedor. Elas ficam salvas só neste navegador e viram base de mockup.', '')}`;
   }
 
   async function reload() { photos = await db.photos.orderBy('id').toArray(); drawTabs(); }
+
+  // IA: detecta o corpo em cada foto ainda não analisada.
+  async function runAI(force = false) {
+    const btn = $('#aiAll', el);
+    if (btn) btn.disabled = true;
+    const prog = (i, n) => { const p = $('#progress', el); if (p) p.textContent = `IA analisando foto ${i} de ${n}… (a primeira vez baixa o modelo, ~9 MB)`; };
+    try {
+      const r = await detectAll(prog, { force });
+      toast(r.total ? `IA analisou ${r.total} foto(s): corpo encontrado em ${r.ok}${r.fail ? `, ${r.fail} sem corpo visível (closes)` : ''}.` : 'Todas as fotos já foram analisadas.');
+    } catch (err) { toast(err.message || 'Falha na IA.', 'err'); }
+    reload();
+  }
 
   async function editPhoto(id) {
     const p = photos.find((x) => x.id === id);
@@ -98,6 +112,7 @@ export async function render(el, _p, query) {
     if (t) { tab = t.dataset.tab; drawTabs(); return; }
     const c = e.target.closest('[data-edit]');
     if (c) editPhoto(+c.dataset.edit);
+    if (e.target.closest('#aiAll')) runAI(!photos.some((p) => !p.pose));
   });
   el.addEventListener('change', async (e) => {
     const t = e.target;
@@ -113,7 +128,8 @@ export async function render(el, _p, query) {
         const r = t.id === 'impPack' ? await importPack(files[0], prog) : await importImages(files, prog);
         toast(`${r.added} foto(s) importada(s)${r.skipped ? `, ${r.skipped} ignorada(s) (repetidas ou inválidas)` : ''}.`);
       } catch (err) { toast(err.message || 'Falha ao importar.', 'err'); }
-      reload();
+      await reload();
+      if (photos.some((p) => !p.pose)) runAI();
     }
   });
   drawTabs();

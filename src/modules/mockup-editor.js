@@ -2,10 +2,10 @@ import { db, artBlob, currentVersions } from '../db.js';
 import { $, $$, esc, objURL, loadImage, toast, modal, download, slugify, canvasToBlob } from '../util.js';
 import { GARMENTS, VIEWS, COLORS, garmentById, areasFor, defaultArea, W as VW, H as VH } from '../garments.js';
 import { renderMockup, BACKGROUNDS } from '../compose.js';
-import { renderPhotoMockup, photoAreas, photoLabel, TIPOS_FOTO, VISTAS_FOTO } from '../photos.js';
+import { renderPhotoMockup, photoAreas, photoLabel, detectPhoto, TIPOS_FOTO, VISTAS_FOTO } from '../photos.js';
 import { ICONS } from '../ui.js';
 
-const newLayer = (area) => ({ area, x: 0, y: 0, scale: 1, rot: 0, opacity: 1, blend: 'normal', fabric: 0.6 });
+const newLayer = (area) => ({ area, x: 0, y: 0, scale: 1, rot: 0, opacity: 1, blend: 'normal', fabric: 0.6, warp: 0.5 });
 
 const SLIDERS = [
   { k: 'x', label: 'X', step: 1 },
@@ -13,7 +13,8 @@ const SLIDERS = [
   { k: 'scale', label: 'Escala', min: 0.1, max: 3, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` },
   { k: 'rot', label: 'Rotação', min: -180, max: 180, step: 1, fmt: (v) => `${v}°` },
   { k: 'opacity', label: 'Opacidade', min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` },
-  { k: 'fabric', label: 'Dobras', min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%`, photo: true },
+  { k: 'fabric', label: 'Luz/sombra', min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%`, photo: true },
+  { k: 'warp', label: 'Seguir dobras', min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%`, photo: true },
 ];
 
 export async function render(el, [param], query) {
@@ -41,7 +42,7 @@ export async function render(el, [param], query) {
   let design = null, version = null, img = null;
   let photo = null, photoImg = null;
   let filterTipo = '', filterVista = '';
-  let calibrating = false, calRect = null;
+  let calibrating = false, calRect = null, showAll = false, aiState = '';
 
   async function loadArt() {
     design = st.designId ? await db.designs.get(st.designId) : null;
@@ -55,6 +56,21 @@ export async function render(el, [param], query) {
     if (st.source === 'photo' && !photo) st.source = 'vector';
   }
   await Promise.all([loadArt(), loadPhoto()]);
+
+  async function runDetect() {
+    if (!photo || aiState === 'running') return;
+    const target = photo;
+    aiState = 'running';
+    syncControls();
+    try {
+      await detectPhoto(target);
+      const i = photos.findIndex((x) => x.id === target.id);
+      if (i >= 0) photos[i] = target;
+      aiState = '';
+      if (target.pose.ok) toast('IA detectou o corpo: áreas ajustadas a esta foto.');
+    } catch (e) { console.error(e); aiState = 'error'; }
+    if (photo === target) update();
+  }
   const missingPhoto = rec?.source === 'photo' && !photo;
 
   el.innerHTML = `
@@ -102,8 +118,14 @@ export async function render(el, [param], query) {
         ${missingPhoto ? '<p class="hint warn">A foto original deste mockup foi excluída.</p>' : ''}
         <div class="ed-group"><h4>Arte</h4><div id="artBox"></div></div>
         <div class="ed-group"><div class="ed-row"><h4>Área de impressão</h4><button class="link" id="calib">Ajustar na foto</button></div>
+          <div class="ai-status photo-only" id="aiStatus"></div>
           <div class="list list-2" id="areas"></div>
-          <p class="hint" id="calibHint" hidden>Arraste na foto um retângulo sobre o peito (ou costas). Ele vira a área padrão desta foto.</p>
+          <p class="hint warn" id="handWarn" hidden>A mão do modelo está na frente desta área. A estampa vai passar por cima da mão: prefira outra área ou outra foto.</p>
+          <p class="hint" id="calibHint" hidden>Arraste na foto um retângulo sobre a área selecionada. O ajuste fica salvo para esta foto.</p>
+          <div class="ed-row photo-only area-tools">
+            <label class="toggle small"><input type="checkbox" id="showAll"><span>Ver todas as áreas</span></label>
+            <button class="link" id="undoManual" hidden>Voltar ao automático</button>
+          </div>
         </div>
         <div class="ed-group"><div class="ed-row"><h4>Ajustes</h4><button class="link" id="reset">Resetar</button></div>
           ${SLIDERS.map((s) => `
@@ -154,16 +176,16 @@ export async function render(el, [param], query) {
   ro.observe(wrap);
 
   const opts = () => (isPhoto()
-    ? { photo, img: photoImg, layers: img ? [{ ...st.layer, img }] : [], showArea: true }
+    ? { photo, img: photoImg, layers: img ? [{ ...st.layer, img }] : [], showArea: true, showAllAreas: showAll }
     : { garment: st.garment, view: st.view, color: st.color, bg: st.bg, layers: img ? [{ ...st.layer, img }] : [] });
-  const draw = (c, scale, guides) => (isPhoto() ? renderPhotoMockup(c, opts(), { scale, guides }) : renderMockup(c, opts(), { scale, guides }));
+  const draw = (c, scale, guides, fast = false) => (isPhoto() ? renderPhotoMockup(c, opts(), { scale, guides, fast }) : renderMockup(c, opts(), { scale, guides }));
 
   let raf = 0;
   function paint() {
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       const s = paintScale();
-      const { sizes } = draw(ctx, s, true);
+      const { sizes } = draw(ctx, s, true, !!drag);
       if (calRect) {
         ctx.save();
         ctx.setTransform(s, 0, 0, s, 0, 0);
@@ -225,7 +247,18 @@ export async function render(el, [param], query) {
          ${version.hasAlpha === false ? '<p class="hint warn">Esta arte não tem fundo transparente. Use “Remover fundo” na página do design.</p>' : ''}`
       : `<button class="btn block" id="pick">${ICONS.plus}<span>Escolher arte</span></button>
          ${st.designId && !design ? '<p class="hint warn">A arte original deste mockup foi excluída.</p>' : ''}`;
-    const areaLabel = img ? ` · ${ar.find((a) => a.id === st.layer.area)?.label}` : '';
+    const cur = ar.find((a) => a.id === st.layer.area);
+    $('#handWarn', el).hidden = !(ph && cur?.handOver);
+    $('#undoManual', el).hidden = !(ph && cur?.manual);
+    $('#showAll', el).checked = showAll;
+    if (ph) {
+      $('#aiStatus', el).innerHTML = aiState === 'running' ? '<span class="dot pulse"></span>IA analisando o corpo na foto…'
+        : aiState === 'error' ? '<span class="dot err"></span>Não foi possível carregar a IA. <button class="link" id="aiRun">Tentar de novo</button>'
+          : photo.pose?.ok ? `<span class="dot ok"></span>Áreas detectadas por IA neste corpo. <button class="link" id="aiRun">Detectar de novo</button>`
+            : photo.pose ? '<span class="dot warn"></span>A IA não achou o corpo (close ou recorte). Use “Ajustar na foto”. <button class="link" id="aiRun">Tentar de novo</button>'
+              : '<span class="dot"></span><button class="link" id="aiRun">Detectar áreas com IA</button>';
+    }
+    const areaLabel = img ? ` · ${cur?.label}` : '';
     $('#status', el).textContent = ph ? `${photoLabel(photo)} · foto real${areaLabel}` : `${garmentById(st.garment).label} · ${st.view === 'costas' ? 'Costas' : 'Frente'}${areaLabel}`;
   }
 
@@ -269,8 +302,10 @@ export async function render(el, [param], query) {
     } else if (d.photo) {
       st.photoId = +d.photo;
       await loadPhoto();
-      st.layer = { ...st.layer, x: 0, y: 0 };
+      st.layer = { ...st.layer, x: 0, y: 0, rot: 0 };
+      calibrating = false;
       update();
+      if (!photo.pose) runDetect();
     } else if (d.garment) { st.garment = d.garment; update(); }
     else if (d.view && d.view !== st.view) { st.view = d.view; st.layer = { ...newLayer(defaultArea(d.view)), opacity: st.layer.opacity }; update(); }
     else if (d.color) { st.color = d.color; update(); }
@@ -278,6 +313,16 @@ export async function render(el, [param], query) {
     else if (d.blend) { st.layer.blend = d.blend; update(); }
     else if (d.area) { st.layer = { ...st.layer, area: d.area, x: 0, y: 0, rot: 0 }; update(); }
     else if (b.id === 'calib') { calibrating = !calibrating; calRect = null; update(); }
+    else if (b.id === 'aiRun') runDetect();
+    else if (b.id === 'undoManual') {
+      const ov = { ...(photo.areaOverrides || {}) };
+      delete ov[st.layer.area];
+      const patch = { areaOverrides: ov };
+      if (st.layer.area === 'principal') patch.area = null;
+      Object.assign(photo, patch);
+      await db.photos.update(photo.id, patch);
+      update();
+    }
     else if (b.id === 'pick') pickArt();
     else if (b.id === 'reset') { st.layer = { ...newLayer(st.layer.area), blend: st.layer.blend }; update(); }
     else if (b.id === 'save') save(b);
@@ -289,6 +334,7 @@ export async function render(el, [param], query) {
     }
   });
   $('#customColor', el).addEventListener('input', (e) => { st.color = e.target.value; update(); });
+  $('#showAll', el).addEventListener('change', (e) => { showAll = e.target.checked; paint(); });
   $('#fTipo', el).addEventListener('change', (e) => { filterTipo = e.target.value; drawPhotoGrid(); syncControls(); });
   $('#fVista', el).addEventListener('change', (e) => { filterVista = e.target.value; drawPhotoGrid(); syncControls(); });
   el.addEventListener('input', (e) => {
@@ -337,17 +383,21 @@ export async function render(el, [param], query) {
     drag = null;
     cv.classList.remove('dragging');
     if (wasCal && calRect && calRect.w > 10 && calRect.h > 10) {
-      const area = { cx: (calRect.x + calRect.w / 2) / photo.w, cy: (calRect.y + calRect.h / 2) / photo.h, w: calRect.w / photo.w, h: calRect.h / photo.h };
-      photo.area = area;
-      await db.photos.update(photo.id, { area });
+      const cur = areas().find((a) => a.id === st.layer.area);
+      const rect = { cx: (calRect.x + calRect.w / 2) / photo.w, cy: (calRect.y + calRect.h / 2) / photo.h, w: calRect.w / photo.w, h: calRect.h / photo.h, rot: cur?.rot || 0 };
+      const patch = { areaOverrides: { ...(photo.areaOverrides || {}), [st.layer.area]: rect } };
+      if (st.layer.area === 'principal') patch.area = null;
+      Object.assign(photo, patch);
+      await db.photos.update(photo.id, patch);
       calibrating = false; calRect = null;
-      st.layer = { ...st.layer, area: 'principal', x: 0, y: 0 };
-      toast('Área salva para esta foto.');
+      st.layer = { ...st.layer, x: 0, y: 0 };
+      toast(`${cur?.label || 'Área'} ajustada para esta foto.`);
       update();
       return;
     }
     if (wasCal) { calRect = null; paint(); return; }
     syncControls();
+    paint();
   };
   cv.addEventListener('pointerup', endDrag);
   cv.addEventListener('pointercancel', endDrag);
@@ -413,6 +463,7 @@ export async function render(el, [param], query) {
 
   drawPhotoGrid();
   update();
+  if (isPhoto() && !photo.pose) runDetect();
   if (!img && isNew && !st.designId) pickArt();
   return () => { cancelAnimationFrame(raf); ro.disconnect(); };
 }
