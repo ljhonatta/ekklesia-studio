@@ -1,7 +1,7 @@
 import { db } from '../db.js';
 import { $, $$, esc, objURL, toast, modal, confirmDialog } from '../util.js';
 import { mockupCard, pageHead, empty, ICONS } from '../ui.js';
-import { TIPOS_FOTO, VISTAS_FOTO, MODELOS, vistaLabel, photoLabel, importImages, importPack, detectAll } from '../photos.js';
+import { TIPOS_FOTO, VISTAS_FOTO, MODELOS, MODELAGENS, vistaLabel, photoLabel, importImages, importPack, detectAll, needsAnalysis } from '../photos.js';
 
 export async function render(el, _p, query) {
   let tab = query.tab === 'pecas' ? 'pecas' : 'salvos';
@@ -34,7 +34,7 @@ export async function render(el, _p, query) {
     }
     const shown = photos.filter((p) => (!fTipo || p.tipo === fTipo) && (!fVista || p.vista === fVista) && (!fModelo || p.modelo === fModelo));
     const count = (k, v) => photos.filter((p) => p[k] === v).length;
-    const pending = photos.filter((p) => !p.pose).length;
+    const pending = photos.filter(needsAnalysis).length;
     $('#body', el).innerHTML = `
       <div class="toolbar">
         <div class="filters">
@@ -53,7 +53,7 @@ export async function render(el, _p, query) {
         <button class="card photo-card" data-edit="${p.id}">
           <div class="thumb"><img src="${objURL(p.thumb)}" alt="" loading="lazy"></div>
           <div class="card-body"><div class="card-title">${esc(photoLabel(p))}</div>
-            <div class="card-meta"><span>${p.pose?.ok ? '<i class="dot ok" title="Áreas detectadas por IA"></i> ' : ''}${vistaLabel(p.vista)}${p.modelo ? ` · ${p.modelo === 'feminino' ? 'Fem.' : 'Masc.'}` : ''}</span>${p.corHex ? `<span class="swatch-dot" style="background:${esc(p.corHex)}"></span>` : ''}</div></div>
+            <div class="card-meta"><span>${!needsAnalysis(p) && p.shirt?.ok ? '<i class="dot ok" title="Corpo e roupa detectados por IA"></i> ' : ''}${vistaLabel(p.vista)}${p.modelo ? ` · ${p.modelo === 'feminino' ? 'Fem.' : 'Masc.'}` : ''}</span>${p.corHex ? `<span class="swatch-dot" style="background:${esc(p.corHex)}"></span>` : ''}</div></div>
         </button>`).join('')}</div>` : empty('Nada por aqui', 'Nenhuma foto com esses filtros.')
         : empty('Nenhuma peça real ainda', 'Importe as fotos das peças do fornecedor. Elas ficam salvas só neste navegador e viram base de mockup.', '')}`;
   }
@@ -87,6 +87,7 @@ export async function render(el, _p, query) {
             <label class="field"><span>Tipo de peça</span><select name="tipo">${TIPOS_FOTO.map((t) => opt(t, t, p.tipo)).join('')}</select></label>
             <label class="field"><span>Cor</span><input name="cor" value="${esc(p.cor)}" placeholder="Ex.: preta"></label>
             <label class="field"><span>Vista</span><select name="vista">${VISTAS_FOTO.map((v) => opt(v.id, v.label, p.vista)).join('')}</select></label>
+            <label class="field"><span>Modelagem</span><select name="modelagem">${opt('', '—', p.modelagem || '')}${MODELAGENS.map((m) => opt(m.id, m.label, p.modelagem)).join('')}</select></label>
             <label class="field"><span>Modelo</span><select name="modelo">${opt('', '—', p.modelo)}${MODELOS.map((m) => opt(m.id, m.label, p.modelo)).join('')}</select></label>
             <p class="hint">${p.w} × ${p.h} px${p.sourceFile ? ` · ${esc(p.sourceFile)}` : ''}</p>
           </form>
@@ -112,7 +113,7 @@ export async function render(el, _p, query) {
     if (t) { tab = t.dataset.tab; drawTabs(); return; }
     const c = e.target.closest('[data-edit]');
     if (c) editPhoto(+c.dataset.edit);
-    if (e.target.closest('#aiAll')) runAI(!photos.some((p) => !p.pose));
+    if (e.target.closest('#aiAll')) runAI(!photos.some(needsAnalysis));
   });
   el.addEventListener('change', async (e) => {
     const t = e.target;
@@ -129,7 +130,7 @@ export async function render(el, _p, query) {
         toast(`${r.added} foto(s) importada(s)${r.skipped ? `, ${r.skipped} ignorada(s) (repetidas ou inválidas)` : ''}.`);
       } catch (err) { toast(err.message || 'Falha ao importar.', 'err'); }
       await reload();
-      if (photos.some((p) => !p.pose)) runAI();
+      if (photos.some(needsAnalysis)) runAI();
     }
   });
   drawTabs();

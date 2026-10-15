@@ -15,7 +15,12 @@ Estúdio interno da EKKLESIA para transformar uma ideia de roupa em **design →
 - **Produtos** com ficha técnica completa: SKU, categoria, descrição, material, gramatura, cores, tamanhos, tabela de medidas, técnica, preço, parcelamento, disponibilidade, link de compra, design, arquivo de produção e mockups. Cada produto tem página própria com o botão COMPRAR AGORA.
 - **Catálogo**: escolha e ordene as peças. O PDF é gerado com capa, apresentação da marca, índice clicável, uma página por peça (botão de compra e QR Code) e contracapa com os botões VER SITE, INSTAGRAM e WHATSAPP.
 
-**Peças reais (fotos do fornecedor):** em Mockups → Peças reais, importe as fotos (ou o pacote `EKKLESIA-pecas-reais.json`, já classificado por peça, cor, modelo e vista). No editor, escolha "Peças reais", clique na foto e aplique a arte: ela recebe as dobras e a luz do tecido da foto. Ao importar, uma **IA de detecção de corpo** (MoveNet, roda no navegador) encontra ombros, cotovelos, punhos e quadril de cada foto e posiciona sozinha as áreas: estampa grande, peito central, peito esquerdo/direito, barra esquerda/direita, mangas e, nas fotos de costas, nuca e costas superior/central/inferior. As áreas seguem a inclinação do corpo e a estampa acompanha as dobras. Se algo ficar fora, "Ajustar na foto" corrige só aquela área. As fotos ficam **só no navegador** e não vão para o GitHub.
+**Peças reais (fotos do fornecedor):** em Mockups → Peças reais, importe as fotos (ou o pacote `EKKLESIA-pecas-reais.json`, já classificado por peça, cor, modelo e vista). No editor, escolha "Peças reais", clique na foto e aplique a arte: ela recebe as dobras e a luz do tecido da foto. Ao importar, a **IA** (MoveNet, roda no navegador) encontra o corpo e separa a **roupa** de cada foto. Com isso o app:
+- descobre sozinho se a foto é de frente ou de costas, a cor da peça e se é oversized;
+- posiciona as áreas no **padrão de serigrafia/bordado**, medidas a partir da gola e da barra reais (peito esquerdo/direito/central, estampa A3, barras, mangas, nuca, costas);
+- projeta a estampa no tronco em **3D** (acompanha o giro do corpo; ajuste em "Giro 3D") e **recorta só onde tem roupa** (não cobre braço, mão ou fundo).
+
+No editor ainda dá para trocar a **cor da arte** (preto, branco, dourado ou qualquer cor), dar nome ao mockup e usar **"Salvar como novo"** para criar outro a partir do atual. As fotos ficam **só no navegador** e não vão para o GitHub.
 
 **Logo oficial:** envie em Configurações → Logo oficial. O sistema recorta o fundo e usa a logo em branco (menu, capa e contracapa), preto (apresentação) e dourado (etiqueta da gola nos mockups).
 

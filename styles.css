@@ -478,6 +478,17 @@ h4.sub { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; colo
 .toggle.small { font-size: 12px; color: var(--muted); }
 .toggle.small input { width: 14px; height: 14px; }
 
+/* cor da arte */
+.tints { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tints button { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(255,255,255,.25); background: var(--c); cursor: pointer; padding: 0; }
+.tints button[data-tint=""] { width: auto; border-radius: 99px; padding: 0 10px; background: transparent; color: var(--muted); font-size: 12px; }
+.tints button.active { outline: 2px solid var(--gold); outline-offset: 2px; color: var(--text); }
+.tint-custom { width: 26px; height: 26px; border-radius: 50%; background: conic-gradient(#d46b5c, #d9a75a, #8fb08a, #5a8fd4, #a06bd4, #d46b5c); position: relative; overflow: hidden; cursor: pointer; }
+.tint-custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.list button.dim { opacity: .45; }
+.link.mini { font-size: 10.5px; margin-left: 2px; }
+.ed-actions .field input { height: 36px; }
+
 /* ---------- responsivo ---------- */
 @media (max-width: 1280px) and (min-width: 861px) {
   :root { --sidebar: 64px; }

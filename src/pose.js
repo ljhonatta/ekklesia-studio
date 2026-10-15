@@ -63,7 +63,8 @@ export async function detectPose(img) {
     pts[k] = { x: +(q.x / W).toFixed(4), y: +(q.y / H).toFixed(4), v: +(q.score ?? 0).toFixed(2) };
   }
   const ok = pts.ls.v > 0.35 && pts.rs.v > 0.35 && Math.abs(pts.ls.x - pts.rs.x) > 0.04;
-  // de costas: nariz e olhos pouco confiáveis, orelhas às vezes aparecem
-  const facing = pts.nose.v < 0.3 ? 'back' : 'front';
+  // A IA marca ombro esquerdo/direito anatômicos: de frente, o esquerdo da
+  // pessoa aparece à direita da imagem; de costas, à esquerda.
+  const facing = pts.ls.x >= pts.rs.x ? 'front' : 'back';
   return { ok, pts, facing, at: Date.now() };
 }
