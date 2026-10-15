@@ -415,12 +415,24 @@ h4.sub { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; colo
   .medidas-wrap, #medidas { overflow-x: auto; }
 }
 
+/* logo */
+.brand-mark.has-logo { font-size: 0; }
+.brand-mark.has-logo img { width: 150px; height: auto; display: block; }
+.logo-panel { margin-bottom: 20px; }
+.logo-panel .section-head { margin-bottom: 4px; }
+.logo-previews { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+.logo-previews figure { margin: 0; border-radius: 8px; border: 1px solid var(--line); padding: 28px 24px 12px; display: grid; justify-items: center; gap: 14px; }
+.logo-previews canvas { max-width: 100%; max-height: 110px; width: auto; height: auto; }
+.logo-previews figcaption { font-size: 11px; color: var(--muted); letter-spacing: .14em; text-transform: uppercase; }
+.logo-empty { border: 1px dashed var(--line-2); border-radius: 8px; padding: 22px; color: var(--muted); font-size: 13px; }
+
 /* ---------- responsivo ---------- */
 @media (max-width: 1280px) and (min-width: 861px) {
   :root { --sidebar: 64px; }
   .sidebar { padding: 22px 10px; align-items: center; }
   .brand-mark { font-size: 0; }
   .brand-mark::first-letter { font-size: 28px; }
+  .brand-mark.has-logo img { width: 44px; }
   .brand-sub, .nav a span, .nav em, .sidebar-foot { display: none; }
   .nav a { justify-content: center; padding: 10px; }
 }
@@ -432,6 +444,8 @@ h4.sub { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; colo
   .app { grid-template-columns: 1fr; }
   .sidebar { position: sticky; top: 0; z-index: 20; height: auto; flex-direction: row; align-items: center; gap: 12px; padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
   .brand-mark { font-size: 20px; }
+  .brand-mark.has-logo img { width: 84px; }
+  .logo-previews { grid-template-columns: 1fr; }
   .brand-sub { font-size: 8px; margin-top: 3px; }
   .nav { flex-direction: row; overflow-x: auto; scrollbar-width: none; }
   .nav a { flex: none; padding: 8px 10px; }

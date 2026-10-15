@@ -9,6 +9,9 @@ export const BACKGROUNDS = [
   { id: 'transparente', label: 'Transparente' },
 ];
 
+let labelLogo = null;
+export const setLabelLogo = (canvas) => { labelLogo = canvas; };
+
 let noiseCanvas;
 function noisePattern(ctx) {
   if (!noiseCanvas) {
@@ -152,10 +155,16 @@ export function renderMockup(ctx, opts, { scale = 1, guides = false } = {}) {
     ctx.fill(geo.inner);
     ctx.fillStyle = '#0e0e0e';
     ctx.fillRect(W / 2 - 26, TOP + 7, 52, 15);
-    ctx.fillStyle = '#c4a96b';
-    ctx.font = '600 7px Inter, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('EKKLESIA', W / 2, TOP + 17.5);
+    if (labelLogo) {
+      const k = Math.min(44 / labelLogo.width, 11 / labelLogo.height);
+      const lw = labelLogo.width * k, lh = labelLogo.height * k;
+      ctx.drawImage(labelLogo, W / 2 - lw / 2, TOP + 14.5 - lh / 2, lw, lh);
+    } else {
+      ctx.fillStyle = '#c4a96b';
+      ctx.font = '600 7px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('EKKLESIA', W / 2, TOP + 17.5);
+    }
     ctx.restore();
   }
 

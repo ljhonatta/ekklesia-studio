@@ -15,6 +15,8 @@ Estúdio interno da EKKLESIA para transformar uma ideia de roupa em **design →
 - **Produtos** com ficha técnica completa: SKU, categoria, descrição, material, gramatura, cores, tamanhos, tabela de medidas, técnica, preço, parcelamento, disponibilidade, link de compra, design, arquivo de produção e mockups. Cada produto tem página própria com o botão COMPRAR AGORA.
 - **Catálogo**: escolha e ordene as peças. O PDF é gerado com capa, apresentação da marca, índice clicável, uma página por peça (botão de compra e QR Code) e contracapa com os botões VER SITE, INSTAGRAM e WHATSAPP.
 
+**Logo oficial:** envie em Configurações → Logo oficial. O sistema recorta o fundo e usa a logo em branco (menu, capa e contracapa), preto (apresentação) e dourado (etiqueta da gola nos mockups).
+
 As peças ainda são **silhuetas provisórias**. Para trocar por fotos, veja `assets/garments/README.md`.
 
 ## Rodar localmente

@@ -4,6 +4,15 @@ import { db } from './db.js';
 import { getJsPDF, qrMatrix } from './vendor.js';
 import { brl, installmentText, tecLabel, dispLabel, buyLink, siteURL, instagramURL, whatsappURL } from './data.js';
 import { productImages, toJpegDataURL } from './products.js';
+import { tintedDataURL } from './brand.js';
+
+// Desenha a logo com largura `w` (limitada pela altura `maxH`), centrada em x. Retorna a altura usada.
+function logo(doc, l, cx, top, w, maxH = 999) {
+  let lw = w, lh = (w * l.h) / l.w;
+  if (lh > maxH) { lh = maxH; lw = (maxH * l.w) / l.h; }
+  doc.addImage(l.url, 'PNG', cx - lw / 2, top, lw, lh, undefined, 'FAST');
+  return lh;
+}
 
 const PW = 210, PH = 297, M = 18;
 const C = { ink: '#0c0c0c', paper: '#f3f1ec', panel: '#dbd7cf', gold: '#b39558', grey: '#6f6b64', light: '#a8a39a', white: '#ffffff' };
@@ -71,8 +80,8 @@ function cover(doc, brand, catalog, count) {
   bg(doc, C.ink);
   font(doc, 'helvetica', 'normal', 7.5, C.gold);
   spaced(doc, `CATÁLOGO ${new Date().getFullYear()}`, PW / 2, 32, 2.4, 'center');
-  font(doc, 'times', 'normal', 50, C.white);
-  spaced(doc, (brand.brandName || 'EKKLESIA').toUpperCase(), PW / 2, 142, 3.2, 'center');
+  if (brand.logoWhite) logo(doc, brand.logoWhite, PW / 2, 146 - Math.min(80, (140 * brand.logoWhite.h) / brand.logoWhite.w), 140, 80);
+  else { font(doc, 'times', 'normal', 50, C.white); spaced(doc, (brand.brandName || 'EKKLESIA').toUpperCase(), PW / 2, 142, 3.2, 'center'); }
   doc.setDrawColor(C.gold); doc.setLineWidth(0.4);
   doc.line(PW / 2 - 14, 154, PW / 2 + 14, 154);
   font(doc, 'times', 'italic', 22, '#e8e4dc');
@@ -89,14 +98,22 @@ function intro(doc, brand, catalog, products, firstPage, total) {
   bg(doc, C.paper);
   font(doc, 'helvetica', 'normal', 7.5, C.gold);
   spaced(doc, 'A MARCA', M, 38, 2.4);
-  font(doc, 'times', 'normal', 34, C.ink);
-  doc.text(safe(brand.brandName || 'EKKLESIA'), M, 54);
+  let bodyY = 68;
+  if (brand.logoInk) {
+    const lh = Math.min(30, (70 * brand.logoInk.h) / brand.logoInk.w);
+    const lw = (lh * brand.logoInk.w) / brand.logoInk.h;
+    logo(doc, brand.logoInk, M + lw / 2, 44, lw, lh);
+    bodyY = 44 + lh + 14;
+  } else {
+    font(doc, 'times', 'normal', 34, C.ink);
+    doc.text(safe(brand.brandName || 'EKKLESIA'), M, 54);
+  }
   font(doc, 'helvetica', 'normal', 10.5, '#3b3935');
   const text = brand.apresentacao || 'Cadastre a apresentação da marca em Configurações.';
   const lines = doc.splitTextToSize(safe(text), 140).slice(0, 16);
   doc.setLineHeightFactor(1.55);
-  doc.text(lines, M, 68);
-  let y = Math.max(140, 68 + lines.length * 6.2 + 18);
+  doc.text(lines, M, bodyY);
+  let y = Math.max(140, bodyY + lines.length * 6.2 + 18);
   font(doc, 'helvetica', 'normal', 7.5, C.gold);
   spaced(doc, 'NESTA COLEÇÃO', M, y, 2.4);
   y += 8;
@@ -199,8 +216,8 @@ async function productPage(doc, p, brand, n, total) {
 
 async function back(doc, brand, catalog, n) {
   bg(doc, C.ink);
-  font(doc, 'times', 'normal', 30, C.white);
-  spaced(doc, (brand.brandName || 'EKKLESIA').toUpperCase(), PW / 2, 92, 2.4, 'center');
+  if (brand.logoWhite) logo(doc, brand.logoWhite, PW / 2, 96 - Math.min(50, (90 * brand.logoWhite.h) / brand.logoWhite.w), 90, 50);
+  else { font(doc, 'times', 'normal', 30, C.white); spaced(doc, (brand.brandName || 'EKKLESIA').toUpperCase(), PW / 2, 92, 2.4, 'center'); }
   if (brand.tagline) { font(doc, 'times', 'italic', 15, '#d9d4ca'); doc.text(doc.splitTextToSize(safe(brand.tagline), 130), PW / 2, 106, { align: 'center' }); }
   const links = [
     ['VER SITE', siteURL(brand.site)],
@@ -219,8 +236,9 @@ async function back(doc, brand, catalog, n) {
   spaced(doc, safe(catalog.title || '').toUpperCase(), PW / 2, PH - 16, 1.6, 'center');
 }
 
-export async function buildCatalogPDF(catalog, brand) {
+export async function buildCatalogPDF(catalog, brandIn) {
   const jsPDF = await getJsPDF();
+  const brand = { ...brandIn, logoWhite: await tintedDataURL('#ffffff', 1600), logoInk: await tintedDataURL(C.ink, 1200) };
   const products = (await db.products.bulkGet(catalog.productIds || [])).filter(Boolean);
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({ title: safe(`${brand.brandName || 'EKKLESIA'} · ${catalog.title || 'Catálogo'}`), creator: 'EKKLESIA STUDIO' });

@@ -1,6 +1,7 @@
 import { getSetting, setSetting, exportBackup, importBackup } from '../db.js';
 import { $, esc, fmtBytes, toast, confirmDialog, download } from '../util.js';
 import { pageHead, ICONS } from '../ui.js';
+import { getLogo, saveLogo, processLogo, tinted } from '../brand.js';
 
 const BRAND_FIELDS = [
   { k: 'brandName', label: 'Nome da marca', ph: 'EKKLESIA' },
@@ -18,6 +19,16 @@ export async function render(el) {
 
   el.innerHTML = `
     ${pageHead({ eyebrow: 'Configurações', title: 'Marca e dados' })}
+    <section class="panel logo-panel">
+      <div class="section-head"><h3>Logo oficial</h3>
+        <div class="actions-row tight">
+          <label class="btn primary sm">${ICONS.upload}<span id="logoBtn">Enviar logo</span><input type="file" id="logoFile" accept=".png,.jpg,.jpeg,.webp,.svg,image/*" hidden></label>
+          <button class="btn ghost sm" id="logoRm" hidden>Remover</button>
+        </div>
+      </div>
+      <p class="hint">PNG transparente ou a logo clara sobre fundo escuro (ou escura sobre fundo claro). O sistema recorta o fundo e aplica a logo em branco, preto ou dourado: no menu, na etiqueta da gola dos mockups e na capa, apresentação e contracapa do catálogo.</p>
+      <div class="logo-previews" id="logoPrev"></div>
+    </section>
     <div class="settings-grid">
       <section class="panel">
         <h3>Marca</h3>
@@ -40,6 +51,40 @@ export async function render(el) {
         </div>
       </section>
     </div>`;
+
+  async function drawLogo() {
+    const l = await getLogo();
+    $('#logoRm', el).hidden = !l;
+    $('#logoBtn', el).textContent = l ? 'Trocar logo' : 'Enviar logo';
+    const box = $('#logoPrev', el);
+    box.innerHTML = '';
+    if (!l) { box.innerHTML = '<div class="logo-empty">Nenhuma logo enviada. Enquanto isso, o nome da marca é usado em texto.</div>'; return; }
+    for (const [bg, color, label] of [['#0c0c0c', '#ffffff', 'Branca'], ['#f3f1ec', '#0c0c0c', 'Preta'], ['#151515', '#c4a96b', 'Dourada']]) {
+      const fig = document.createElement('figure');
+      fig.style.background = bg;
+      fig.append(tinted(l, color, 600));
+      const cap = document.createElement('figcaption');
+      cap.textContent = label;
+      fig.append(cap);
+      box.append(fig);
+    }
+  }
+  $('#logoFile', el).addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      await saveLogo(await processLogo(file));
+      toast('Logo salva.');
+      drawLogo();
+    } catch (err) { toast(err.message, 'err'); }
+  });
+  $('#logoRm', el).addEventListener('click', async () => {
+    if (!await confirmDialog('Remover logo', 'Remover a logo? O nome da marca volta a aparecer em texto.', 'Remover', true)) return;
+    await saveLogo(null);
+    drawLogo();
+  });
+  drawLogo();
 
   $('#brand', el).addEventListener('submit', async (e) => {
     e.preventDefault();

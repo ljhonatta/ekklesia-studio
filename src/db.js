@@ -85,15 +85,25 @@ export const setSetting = (key, value) => db.settings.put({ key, value });
 // ---------- Backup ----------
 const TABLES = ['designs', 'versions', 'mockups', 'products', 'productionFiles', 'catalogs', 'catalogItems', 'settings'];
 
+// Blobs (inclusive aninhados, como a logo em settings) viram data URLs no JSON.
+async function encode(v) {
+  if (v instanceof Blob) return { __blob: await blobToDataURL(v) };
+  if (Array.isArray(v)) return Promise.all(v.map(encode));
+  if (v && typeof v === 'object') return Object.fromEntries(await Promise.all(Object.entries(v).map(async ([k, x]) => [k, await encode(x)])));
+  return v;
+}
+async function decode(v) {
+  if (v && typeof v === 'object' && typeof v.__blob === 'string') return dataURLToBlob(v.__blob);
+  if (Array.isArray(v)) return Promise.all(v.map(decode));
+  if (v && typeof v === 'object') return Object.fromEntries(await Promise.all(Object.entries(v).map(async ([k, x]) => [k, await decode(x)])));
+  return v;
+}
+
 export async function exportBackup() {
   const out = { app: 'ekklesia-studio', schema: 1, exportedAt: new Date().toISOString(), tables: {} };
   for (const t of TABLES) {
     const rows = await db.table(t).toArray();
-    out.tables[t] = await Promise.all(rows.map(async (row) => {
-      const o = {};
-      for (const [k, v] of Object.entries(row)) o[k] = v instanceof Blob ? { __blob: await blobToDataURL(v) } : v;
-      return o;
-    }));
+    out.tables[t] = await Promise.all(rows.map(encode));
   }
   return new Blob([JSON.stringify(out)], { type: 'application/json' });
 }
@@ -104,11 +114,7 @@ export async function importBackup(file) {
   // Decodifica tudo antes da transação (await fora do IndexedDB encerraria a transação).
   const decoded = {};
   for (const t of TABLES) {
-    decoded[t] = await Promise.all((data.tables[t] || []).map(async (row) => {
-      const o = {};
-      for (const [k, v] of Object.entries(row)) o[k] = v && typeof v === 'object' && v.__blob ? await dataURLToBlob(v.__blob) : v;
-      return o;
-    }));
+    decoded[t] = await Promise.all((data.tables[t] || []).map(decode));
   }
   await db.transaction('rw', TABLES.map((t) => db.table(t)), async () => {
     for (const t of TABLES) {

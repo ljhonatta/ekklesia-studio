@@ -1,5 +1,7 @@
 import { $, revokeURLs } from './util.js';
 import { NAV, ICONS } from './ui.js';
+import { getLogo, tinted } from './brand.js';
+import { setLabelLogo } from './compose.js';
 import * as dashboard from './modules/dashboard.js';
 import * as create from './modules/create.js';
 import * as designs from './modules/designs.js';
@@ -67,8 +69,28 @@ async function route() {
   if (my === seq) { window.scrollTo(0, 0); view.focus({ preventScroll: true }); }
 }
 
+// Logo oficial no menu e na etiqueta da gola dos mockups.
+async function applyLogo() {
+  const l = await getLogo().catch(() => null);
+  const mark = $('.brand-mark');
+  mark.replaceChildren();
+  if (l) {
+    const img = new Image();
+    img.src = tinted(l, '#f1eee8', 600).toDataURL('image/png');
+    img.alt = 'EKKLESIA';
+    mark.append(img);
+    mark.classList.add('has-logo');
+    setLabelLogo(tinted(l, '#c4a96b', 240));
+  } else {
+    mark.textContent = 'EKKLESIA';
+    mark.classList.remove('has-logo');
+    setLabelLogo(null);
+  }
+}
+window.addEventListener('brand-logo', applyLogo);
+
 window.addEventListener('hashchange', route);
-route();
+applyLogo().finally(route);
 
 // Pede ao navegador para não apagar os dados locais sob pressão de espaço.
 navigator.storage?.persist?.().catch(() => {});
