@@ -98,7 +98,7 @@ function drawFabric(ctx, geo, dark) {
 }
 
 // Desenha uma camada de arte dentro da área. Retorna a caixa (para guias e medidas).
-function drawLayer(ctx, img, layer, area) {
+export function drawLayer(ctx, img, layer, area) {
   const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
   const fit = Math.min(area.w / iw, area.h / ih);
   const k = fit * layer.scale;

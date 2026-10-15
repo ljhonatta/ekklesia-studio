@@ -9,6 +9,7 @@ Estúdio interno da marca EKKLESIA: ideia → arte → mockup → produto → ca
 - Dados ficam no IndexedDB (Dexie) em `src/db.js`. Antes de mudar uma tabela, crie `db.version(N+1)` com migração.
 - Cada tela fica em `src/modules/*.js` e exporta `render(el, params, query)`, que opcionalmente retorna uma função de limpeza.
 - O PDF do catálogo (`src/pdf-catalog.js`) usa as fontes padrão do jsPDF (WinAnsi). Passe todo texto por `safe()`.
+- Fotos de peças do fornecedor (`photos`) nunca entram no repositório (público). São importadas no navegador.
 - Interface em pt-BR, estética preta, branca e neutra, com detalhes dourados (`--gold`). Nada de símbolos religiosos decorativos.
 
 ## Rodar

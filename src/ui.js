@@ -44,12 +44,14 @@ export function designCard(d, v) {
 
 export function mockupCard(m, designName) {
   const g = garmentById(m.garment);
+  const label = m.source === 'photo' ? (m.photoName || 'Peça real') : g.label;
+  const view = m.source === 'photo' ? 'Foto real' : m.view === 'costas' ? 'Costas' : 'Frente';
   return `
     <a class="card mockup-card" href="#/mockup/${m.id}">
       <div class="thumb">${m.thumb ? `<img src="${objURL(m.thumb)}" alt="" loading="lazy">` : ''}</div>
       <div class="card-body">
         <div class="card-title">${esc(m.name || designName || 'Mockup')}</div>
-        <div class="card-meta"><span>${esc(g.label)} · ${m.view === 'costas' ? 'Costas' : 'Frente'}</span><span class="swatch-dot" style="background:${esc(m.color)}"></span></div>
+        <div class="card-meta"><span>${esc(label)} · ${view}</span>${m.source === 'photo' ? '' : `<span class="swatch-dot" style="background:${esc(m.color)}"></span>`}</div>
       </div>
     </a>`;
 }

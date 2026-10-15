@@ -17,6 +17,8 @@ db.version(1).stores({
   catalogItems: '++id, catalogId, productId',
   settings: 'key',
 });
+// v2: fotos reais das peças do fornecedor (base de mockup). Ficam só no navegador.
+db.version(2).stores({ photos: '++id, tipo, createdAt' });
 
 export const STATUS = [
   { id: 'criacao', label: 'Em criação' },
@@ -83,7 +85,7 @@ export async function getSetting(key, fallback = null) {
 export const setSetting = (key, value) => db.settings.put({ key, value });
 
 // ---------- Backup ----------
-const TABLES = ['designs', 'versions', 'mockups', 'products', 'productionFiles', 'catalogs', 'catalogItems', 'settings'];
+const TABLES = ['designs', 'versions', 'mockups', 'products', 'productionFiles', 'catalogs', 'catalogItems', 'settings', 'photos'];
 
 // Blobs (inclusive aninhados, como a logo em settings) viram data URLs no JSON.
 async function encode(v) {
