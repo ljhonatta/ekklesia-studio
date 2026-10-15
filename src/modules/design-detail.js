@@ -1,5 +1,6 @@
 import { db, STATUS, artBlob, addVersion, setCurrentVersion, deleteDesign } from '../db.js';
-import { $, esc, objURL, fmtBytes, fmtDateTime, prepareArtFile, toast, confirmDialog, download, slugify, ACCEPT_ATTR } from '../util.js';
+import { $, esc, objURL, fmtBytes, fmtDateTime, prepareArtFile, toast, confirmDialog, download, slugify, loadImage, modal, canvasToBlob, ACCEPT_ATTR } from '../util.js';
+import { imageToCanvas, detectBackground, removeBackground } from '../bgremove.js';
 import { mockupCard, ICONS, empty } from '../ui.js';
 
 const ORIGIN = { upload: 'Upload', 'ia-svg': 'IA · SVG', 'ia-imagem': 'IA · imagem', edit: 'Edição' };
@@ -30,7 +31,10 @@ export async function render(el, [idStr]) {
           <div class="seg" id="bgSeg">
             <button data-bg="checker" class="active">Xadrez</button><button data-bg="light">Claro</button><button data-bg="dark">Escuro</button>
           </div>
-          <button class="btn ghost sm" id="dl">${ICONS.download}<span>Baixar original</span></button>
+          <div class="actions-row tight">
+            <button class="btn sm" id="bgr">Remover fundo</button>
+            <button class="btn ghost sm" id="dl">${ICONS.download}<span>Baixar original</span></button>
+          </div>
         </div>
         <div class="art-stage checker" id="stage"><img id="art" alt=""></div>
         <div class="meta-row" id="meta"></div>
@@ -72,7 +76,7 @@ export async function render(el, [idStr]) {
       <li class="${x.id === viewing ? 'viewing' : ''}">
         <button class="v-main" data-view="${x.id}">
           <img src="${objURL(x.thumb)}" alt="" class="checker">
-          <span><b>V${x.n}</b> ${x.id === design.currentVersionId ? '<em class="tag">atual</em>' : ''}<small>${ORIGIN[x.origin] || x.origin} · ${fmtDateTime(x.createdAt)}</small></span>
+          <span><b>V${x.n}</b> ${x.id === design.currentVersionId ? '<em class="tag">atual</em>' : ''}<small>${x.note ? esc(x.note) : ORIGIN[x.origin] || x.origin} · ${fmtDateTime(x.createdAt)}</small></span>
         </button>
         ${x.id !== design.currentVersionId ? `<button class="btn ghost sm" data-current="${x.id}">Tornar atual</button>` : ''}
       </li>`).join('');
@@ -101,6 +105,8 @@ export async function render(el, [idStr]) {
       bg = b.dataset.bg;
       el.querySelectorAll('[data-bg]').forEach((x) => x.classList.toggle('active', x === b));
       $('#stage', el).className = `art-stage ${bg}`;
+    } else if (b.id === 'bgr') {
+      removeBgFlow(current());
     } else if (b.id === 'dl') {
       const v = current();
       download(v.original, v.fileName || `${slugify(design.name)}-v${v.n}`);
@@ -139,6 +145,94 @@ export async function render(el, [idStr]) {
       draw();
     } catch (err) { toast(err.message, 'err'); }
   });
+
+  // Remove o fundo da versão que está sendo vista e salva como versão nova.
+  async function removeBgFlow(v) {
+    const img = await loadImage(artBlob(v));
+    const preview = imageToCanvas(img, 900);
+    const detected = detectBackground(preview);
+    const st = { color: detected || '#ffffff', tolerance: 40, mode: 'borda', smooth: true, trim: true };
+    let raf = 0, out = null;
+    const choice = await modal({
+      title: `Remover fundo · V${v.n}`,
+      wide: true,
+      body: `
+        <div class="bgr">
+          <div class="bgr-stage checker" id="bgrStage"><canvas id="bgrCv"></canvas></div>
+          <div class="bgr-controls">
+            ${detected ? '' : '<p class="hint warn">A borda desta arte já é transparente. Escolha a cor que quer apagar e use o modo “Em toda a arte”.</p>'}
+            <div class="field"><span>O que apagar</span>
+              <div class="seg seg-wrap" id="bgrMode"><button data-mode="borda" class="active">Só o fundo</button><button data-mode="cor">Essa cor em toda a arte</button></div>
+              <small class="muted" id="bgrModeHint"></small>
+            </div>
+            <label class="field"><span>Cor do fundo</span><span class="bgr-color"><input type="color" id="bgrColor" value="${st.color}"><b id="bgrHex">${st.color.toUpperCase()}</b>${detected ? '<small class="muted">detectada na borda</small>' : ''}</span></label>
+            <label class="slider bgr-slider"><span>Tolerância</span><input type="range" id="bgrTol" min="2" max="150" value="${st.tolerance}"><output id="bgrTolOut">${st.tolerance}</output></label>
+            <label class="toggle"><input type="checkbox" id="bgrSmooth" checked><span>Suavizar bordas (sem halo)</span></label>
+            <label class="toggle"><input type="checkbox" id="bgrTrim" checked><span>Cortar margens vazias</span></label>
+            <div class="field"><span>Ver sobre</span><div class="seg" id="bgrBg"><button data-bgv="checker" class="active">Xadrez</button><button data-bgv="light">Claro</button><button data-bgv="dark">Escuro</button></div></div>
+            <p class="hint">A versão V${v.n} continua salva sem alteração. O resultado vira uma versão nova, em PNG transparente.</p>
+          </div>
+        </div>`,
+      actions: [{ label: 'Cancelar', value: null }, { label: 'Salvar como nova versão', value: 'save', kind: 'primary' }],
+      onOpen: (m) => {
+        const cv = m.querySelector('#bgrCv');
+        const hint = m.querySelector('#bgrModeHint');
+        const paint = () => {
+          cancelAnimationFrame(raf);
+          raf = requestAnimationFrame(() => {
+            out = removeBackground(preview, st);
+            cv.width = out.width; cv.height = out.height;
+            cv.getContext('2d').drawImage(out, 0, 0);
+            hint.textContent = st.mode === 'borda' ? 'Preserva o miolo de letras e formas da mesma cor do fundo.' : 'Apaga também dentro de letras (ex.: o miolo do “A”).';
+          });
+        };
+        m.addEventListener('click', (e) => {
+          const x = e.target.closest('button');
+          if (!x) return;
+          if (x.dataset.mode) { st.mode = x.dataset.mode; m.querySelectorAll('[data-mode]').forEach((y) => y.classList.toggle('active', y === x)); paint(); }
+          if (x.dataset.bgv) { m.querySelector('#bgrStage').className = `bgr-stage ${x.dataset.bgv}`; m.querySelectorAll('[data-bgv]').forEach((y) => y.classList.toggle('active', y === x)); }
+        });
+        m.addEventListener('input', (e) => {
+          const t = e.target;
+          if (t.id === 'bgrColor') { st.color = t.value; m.querySelector('#bgrHex').textContent = t.value.toUpperCase(); }
+          if (t.id === 'bgrTol') { st.tolerance = +t.value; m.querySelector('#bgrTolOut').textContent = t.value; }
+          if (t.id === 'bgrSmooth') st.smooth = t.checked;
+          if (t.id === 'bgrTrim') st.trim = t.checked;
+          paint();
+        });
+        // clicar na prévia escolhe a cor daquele ponto
+        cv.addEventListener('click', (e) => {
+          const r = cv.getBoundingClientRect();
+          const scale = Math.min(r.width / cv.width, r.height / cv.height);
+          const ox = (r.width - cv.width * scale) / 2, oy = (r.height - cv.height * scale) / 2;
+          const px = Math.floor((e.clientX - r.left - ox) / scale), py = Math.floor((e.clientY - r.top - oy) / scale);
+          if (px < 0 || py < 0 || px >= cv.width || py >= cv.height || st.trim) return;
+          const p = preview.getContext('2d').getImageData(px, py, 1, 1).data;
+          if (p[3] < 8) return;
+          st.color = `#${[p[0], p[1], p[2]].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+          m.querySelector('#bgrColor').value = st.color;
+          m.querySelector('#bgrHex').textContent = st.color.toUpperCase();
+          paint();
+        });
+        paint();
+      },
+    });
+    cancelAnimationFrame(raf);
+    if (choice !== 'save') return;
+    toast('Removendo o fundo na resolução original…');
+    try {
+      const full = removeBackground(imageToCanvas(img), st);
+      const blob = await canvasToBlob(full, 'image/png');
+      const base = (v.fileName || slugify(design.name)).replace(/\.[^.]+$/, '');
+      const art = await prepareArtFile(new File([blob], `${base}-sem-fundo.png`, { type: 'image/png' }));
+      await addVersion(id, art, 'edit', `Fundo removido de V${v.n}`);
+      design = await db.designs.get(id);
+      versions = await db.versions.where('designId').equals(id).sortBy('n');
+      viewing = design.currentVersionId;
+      toast(`V${design.versionCount} criada sem fundo. A V${v.n} continua salva.`);
+      draw();
+    } catch (err) { console.error(err); toast('Não foi possível remover o fundo.', 'err'); }
+  }
 
   draw();
 }
