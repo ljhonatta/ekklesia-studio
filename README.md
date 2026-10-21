@@ -33,3 +33,8 @@ python3 -m http.server 8740
 Depois abra http://localhost:8740.
 
 Os dados ficam **no navegador** (IndexedDB). Faça backup em Configurações.
+
+## Loja online (ekklesiastoreide.com.br)
+Menu **Loja online**: chave Pix, WhatsApp, entrada mínima (50%), desconto de lançamento (40% nas 50 primeiras), capa da loja e conexão com o GitHub. O botão **Publicar na loja** envia os produtos **ativos** com preço, as fotos (mockups) e a logo para o repositório `ljhonatta/ekklesia-loja`. Pode ser automático a cada produto salvo. O token do GitHub fica só no navegador e não entra em backups.
+
+Em **Configurações → Modelos de descrição** ficam os textos prontos de tecido, modelagem, estampa, cuidados e produção, usados no cadastro do produto.

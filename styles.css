@@ -489,6 +489,22 @@ h4.sub { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; colo
 .link.mini { font-size: 10.5px; margin-left: 2px; }
 .ed-actions .field input { height: 36px; }
 
+/* modelos de descrição */
+.presets-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; }
+.presets-row select { height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text); font-size: 12.5px; max-width: 180px; }
+
+/* loja online */
+.store-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.store-grid .form-actions { grid-column: 1 / -1; }
+.publish-status { display: grid; gap: 4px; margin-bottom: 18px; font-size: 13px; }
+.presets-panel { margin-bottom: 20px; }
+.preset-group { margin-top: 18px; }
+.preset-group h4 { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); font-weight: 500; margin-bottom: 8px; }
+.preset-item { display: grid; grid-template-columns: 200px 1fr auto; gap: 8px; align-items: start; margin-bottom: 8px; }
+.preset-item:has(.short) { grid-template-columns: 180px 220px 70px 1fr auto; }
+.preset-item input, .preset-item textarea { height: 36px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text); font-size: 13px; resize: vertical; }
+.preset-item textarea { height: auto; min-height: 36px; }
+
 /* ---------- responsivo ---------- */
 @media (max-width: 1280px) and (min-width: 861px) {
   :root { --sidebar: 64px; }
@@ -510,6 +526,9 @@ h4.sub { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; colo
   .brand-mark.has-logo img { width: 84px; }
   .logo-previews { grid-template-columns: 1fr; }
   .bgr { grid-template-columns: 1fr; }
+  .store-grid { grid-template-columns: 1fr; }
+  .preset-item, .preset-item:has(.short) { grid-template-columns: 1fr auto; }
+  .preset-item textarea { grid-column: 1 / -1; }
   .photo-edit { grid-template-columns: 1fr; }
   .photo-edit img { max-height: 40vh; object-fit: contain; }
   .photo-grid { grid-template-columns: repeat(5, 1fr); max-height: 260px; }

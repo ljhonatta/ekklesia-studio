@@ -2,6 +2,7 @@ import { getSetting, setSetting, exportBackup, importBackup } from '../db.js';
 import { $, esc, fmtBytes, toast, confirmDialog, download } from '../util.js';
 import { pageHead, ICONS } from '../ui.js';
 import { getLogo, saveLogo, processLogo, tinted } from '../brand.js';
+import { getPresets, savePresets, PRESET_GROUPS, DEFAULT_PRESETS } from '../presets.js';
 
 const BRAND_FIELDS = [
   { k: 'brandName', label: 'Nome da marca', ph: 'EKKLESIA' },
@@ -28,6 +29,12 @@ export async function render(el) {
       </div>
       <p class="hint">PNG transparente ou a logo clara sobre fundo escuro (ou escura sobre fundo claro). O sistema recorta o fundo e aplica a logo em branco, preto ou dourado: no menu, na etiqueta da gola dos mockups e na capa, apresentação e contracapa do catálogo.</p>
       <div class="logo-previews" id="logoPrev"></div>
+    </section>
+    <section class="panel presets-panel">
+      <div class="section-head"><h3>Modelos de descrição</h3>
+        <div class="actions-row tight"><button class="btn ghost sm" id="presetsReset">Restaurar padrões</button><button class="btn primary sm" id="presetsSave">Salvar modelos</button></div></div>
+      <p class="hint">Textos prontos por tecido, modelagem, estampa, cuidados e produção. No cadastro do produto, escolha e clique em “Inserir no texto”. No tecido, material e gramatura também são preenchidos.</p>
+      <div id="presets"></div>
     </section>
     <div class="settings-grid">
       <section class="panel">
@@ -77,6 +84,7 @@ export async function render(el) {
       await saveLogo(await processLogo(file));
       toast('Logo salva.');
       drawLogo();
+
     } catch (err) { toast(err.message, 'err'); }
   });
   $('#logoRm', el).addEventListener('click', async () => {
@@ -85,6 +93,35 @@ export async function render(el) {
     drawLogo();
   });
   drawLogo();
+
+  // ---- modelos de descrição ----
+  let presets = structuredClone(await getPresets());
+  const pbox = $('#presets', el);
+  function drawPresets() {
+    pbox.innerHTML = PRESET_GROUPS.map((g) => `
+      <div class="preset-group"><h4>${g.label}</h4>
+        ${presets.map((x, i) => (x.grupo !== g.id ? '' : `
+          <div class="preset-item" data-i="${i}">
+            <input data-k="nome" value="${esc(x.nome)}" placeholder="Nome do modelo">
+            ${g.id === 'tecido' ? `<input data-k="material" value="${esc(x.material || '')}" placeholder="Material"><input data-k="gramatura" value="${esc(x.gramatura || '')}" placeholder="g/m²" class="short">` : ''}
+            <textarea data-k="texto" rows="2" placeholder="Texto que entra na descrição">${esc(x.texto)}</textarea>
+            <button class="icon-btn" data-del="${i}" aria-label="Excluir modelo">✕</button>
+          </div>`)).join('')}
+        <button class="link" data-add="${g.id}">+ Adicionar modelo de ${g.label.toLowerCase()}</button>
+      </div>`).join('');
+  }
+  pbox.addEventListener('input', (e) => { const it = e.target.closest('[data-i]'); if (it && e.target.dataset.k) presets[+it.dataset.i][e.target.dataset.k] = e.target.value; });
+  pbox.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.del) { presets.splice(+b.dataset.del, 1); drawPresets(); }
+    if (b.dataset.add) { presets.push({ id: `u${Date.now()}`, grupo: b.dataset.add, nome: '', texto: '' }); drawPresets(); pbox.querySelector(`[data-i="${presets.length - 1}"] input`)?.focus(); }
+  });
+  $('#presetsSave', el).addEventListener('click', async () => { await savePresets(presets.filter((x) => x.nome.trim() || x.texto.trim())); toast('Modelos de descrição salvos.'); });
+  $('#presetsReset', el).addEventListener('click', async () => {
+    if (!await confirmDialog('Restaurar modelos', 'Voltar aos modelos de descrição padrão? Os seus ajustes nos modelos serão perdidos.', 'Restaurar', true)) return;
+    presets = structuredClone(DEFAULT_PRESETS); await savePresets(presets); drawPresets();
+  });
+  drawPresets();
 
   $('#brand', el).addEventListener('submit', async (e) => {
     e.preventDefault();

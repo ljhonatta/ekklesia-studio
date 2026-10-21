@@ -3,6 +3,11 @@ import { $, $$, esc, objURL, toast, confirmDialog, slugify } from '../util.js';
 import { CATEGORIAS, SIZES, TECNICAS, DISPONIBILIDADE, PRODUCT_STATUS, brl, parsePrice, installmentText, tecLabel, dispLabel, buyLink, DEFAULT_BRAND } from '../data.js';
 import { COLORS } from '../garments.js';
 import { productImages, nextSku, uniqueSlug } from '../products.js';
+import { getPresets, PRESET_GROUPS } from '../presets.js';
+import { autoPublish } from '../store-publish.js';
+
+const GENEROS = ['Unissex', 'Masculino', 'Feminino'];
+const generoFor = (cat) => (/feminina|babylook/i.test(cat) ? 'Feminino' : /masculina/i.test(cat) ? 'Masculino' : 'Unissex');
 import { pageHead, empty, ICONS, pill } from '../ui.js';
 
 const colorHex = (name) => COLORS.find((c) => c.label.toLowerCase() === String(name).toLowerCase())?.hex || '#777';
@@ -47,9 +52,13 @@ export async function edit(el, [idStr], query) {
     nome: '', sku: await nextSku(), slug: '', categoria: CATEGORIAS[0], descricao: '', material: '100% algodão', gramatura: '',
     tecnica: 'dtf', cores: [], tamanhos: ['P', 'M', 'G', 'GG'], medidas: {}, preco: null, parcelas: 3, semJuros: true,
     disponibilidade: 'disponivel', status: 'rascunho', linkCompra: '', designId: +query.design || null, productionFileId: null, mockupIds: [],
+    genero: 'Unissex', versiculo: '', lancamento: false, lancDesconto: null, lancLimite: null, lancVendidos: 0,
   } : await db.products.get(+idStr);
   if (!p) { el.innerHTML = empty('Produto não encontrado', '', '<a class="btn" href="#/produtos">Voltar</a>'); return; }
   p = structuredClone(p);
+  p.genero ||= generoFor(p.categoria);
+  const loja = await getSetting('loja', {});
+  const presets = await getPresets();
   let slugTouched = !isNew;
 
   const designs = await db.designs.orderBy('updatedAt').reverse().toArray();
@@ -74,7 +83,17 @@ export async function edit(el, [idStr], query) {
           ${input('sku', 'Código / SKU')}
           <label class="field"><span>Categoria</span><select data-f="categoria">${CATEGORIAS.map((c) => opt(c, c, p.categoria)).join('')}</select></label>
         </div>
-        <label class="field"><span>Descrição</span><textarea data-f="descricao" rows="4" placeholder="A ideia por trás da peça, o versículo, o caimento...">${esc(p.descricao)}</textarea></label>
+        <div class="form-grid two">
+          <label class="field"><span>Público</span><select data-f="genero">${GENEROS.map((g) => opt(g, g, p.genero)).join('')}</select></label>
+          ${input('versiculo', 'Versículo da peça (opcional)', 'placeholder="Ex.: Mc 16:15"')}
+        </div>
+        <label class="field"><span>Descrição</span><textarea data-f="descricao" id="descricao" rows="6" placeholder="A ideia por trás da peça, o versículo, o caimento...">${esc(p.descricao)}</textarea></label>
+        <div class="presets-row">
+          <span class="muted">Modelos de descrição</span>
+          ${PRESET_GROUPS.map((g) => `<select data-preset="${g.id}" aria-label="${g.label}"><option value="">${g.label}</option>${presets.filter((x) => x.grupo === g.id).map((x) => `<option value="${esc(x.id)}">${esc(x.nome)}</option>`).join('')}</select>`).join('')}
+          <button type="button" class="btn sm" id="applyPresets">Inserir no texto</button>
+          <a class="link" href="#/config">Editar modelos</a>
+        </div>
         <div class="form-grid three">
           ${input('slug', 'Endereço (URL)', 'placeholder="camiseta-romanos-8-28"')}
           <label class="field"><span>Status</span><select data-f="status">${PRODUCT_STATUS.map((s) => opt(s.id, s.label, p.status)).join('')}</select></label>
@@ -112,6 +131,18 @@ export async function edit(el, [idStr], query) {
       </section>
 
       <section class="panel">
+        <h3>Loja online</h3>
+        <p class="hint">Produtos com status <b>Ativo</b> vão para a loja ao publicar.</p>
+        <label class="toggle"><input type="checkbox" data-f="lancamento" ${p.lancamento ? 'checked' : ''}><span>Lançamento com desconto para as primeiras unidades</span></label>
+        <div class="form-grid three" id="lancBox">
+          <label class="field"><span>Desconto (%)</span><input data-f="lancDesconto" inputmode="numeric" placeholder="${loja.lancDesconto ?? 40}" value="${esc(p.lancDesconto ?? '')}"></label>
+          <label class="field"><span>Primeiras unidades</span><input data-f="lancLimite" inputmode="numeric" placeholder="${loja.lancLimite ?? 50}" value="${esc(p.lancLimite ?? '')}"></label>
+          <label class="field"><span>Já vendidas no lançamento</span><input data-f="lancVendidos" inputmode="numeric" value="${esc(p.lancVendidos ?? 0)}"></label>
+        </div>
+        <p class="hint" id="lancInfo"></p>
+      </section>
+
+      <section class="panel">
         <h3>Arte, produção e mockups</h3>
         <div class="form-grid two">
           <label class="field"><span>Design</span><select data-f="designId"><option value="">— nenhum —</option>${designs.map((d) => opt(d.id, d.name, p.designId)).join('')}</select></label>
@@ -136,6 +167,9 @@ export async function edit(el, [idStr], query) {
       ${[['largura', 'Largura'], ['comprimento', 'Comprimento']].map(([k, l]) => `<tr><th>${l}</th>${sizes.map((s) => `<td><input data-med="${s}:${k}" inputmode="decimal" value="${esc(p.medidas?.[s]?.[k] ?? '')}"></td>`).join('')}</tr>`).join('')}
       </tbody></table>` : '<p class="hint">Selecione os tamanhos.</p>';
     $('#parcInfo', el).textContent = installmentText(p) || (p.preco ? `${brl(p.preco)} à vista` : '');
+    $('#lancBox', el).hidden = !p.lancamento;
+    const desc = +(p.lancDesconto ?? loja.lancDesconto ?? 40), lim = +(p.lancLimite ?? loja.lancLimite ?? 50);
+    $('#lancInfo', el).textContent = p.lancamento && p.preco ? `Na loja: de ${brl(p.preco)} por ${brl(p.preco * (1 - desc / 100))} · restam ${Math.max(0, lim - (+p.lancVendidos || 0))} de ${lim}.` : '';
     const pfs = files.filter((f) => !p.designId || f.designId === p.designId);
     $('#pfSel', el).innerHTML = `<option value="">— nenhum —</option>${pfs.map((f) => opt(f.id, `${f.name} · ${tecLabel(f.tecnica)} · ${f.widthCm}×${f.heightCm} cm`, p.productionFileId)).join('')}`;
     const ordered = [...mockups].sort((a, b) => (b.designId === p.designId) - (a.designId === p.designId));
@@ -155,12 +189,15 @@ export async function edit(el, [idStr], query) {
     if (t.id === 'corExtra') return;
     if (!f) return;
     if (f === 'semJuros') p.semJuros = t.checked;
+    else if (f === 'lancamento') { p.lancamento = t.checked; drawDynamic(); return; }
+    else if (['lancDesconto', 'lancLimite', 'lancVendidos'].includes(f)) { p[f] = t.value === '' ? null : Math.max(0, parseInt(t.value, 10) || 0); drawDynamic(); return; }
     else if (f === 'preco') p.preco = parsePrice(t.value);
     else if (f === 'parcelas') p.parcelas = +t.value;
     else if (f === 'designId' || f === 'productionFileId') p[f] = t.value ? +t.value : null;
     else p[f] = t.value;
     if (f === 'slug') slugTouched = true;
     if (f === 'nome' && !slugTouched) $('[data-f="slug"]', el).value = p.slug = slugify(t.value);
+    if (f === 'categoria') { p.genero = generoFor(t.value); $('[data-f="genero"]', el).value = p.genero; }
     if (['preco', 'parcelas', 'semJuros', 'designId'].includes(f)) {
       if (f === 'designId' && files.find((x) => x.id === p.productionFileId)?.designId !== p.designId) p.productionFileId = null;
       drawDynamic();
@@ -171,6 +208,20 @@ export async function edit(el, [idStr], query) {
     if (!b) return;
     if (b.dataset.cor) { const c = b.dataset.cor; p.cores = p.cores.includes(c) ? p.cores.filter((x) => x !== c) : [...p.cores, c]; drawDynamic(); }
     else if (b.dataset.tam) { const s = b.dataset.tam; p.tamanhos = p.tamanhos.includes(s) ? p.tamanhos.filter((x) => x !== s) : [...p.tamanhos, s]; drawDynamic(); }
+    else if (b.id === 'applyPresets') {
+      const chosen = $$('[data-preset]', el).map((sel) => presets.find((x) => x.id === sel.value)).filter(Boolean);
+      if (!chosen.length) { toast('Escolha ao menos um modelo.', 'err'); return; }
+      const tecido = chosen.find((x) => x.grupo === 'tecido');
+      if (tecido) {
+        if (tecido.material) { p.material = tecido.material; $('[data-f="material"]', el).value = p.material; }
+        if (tecido.gramatura) { p.gramatura = tecido.gramatura; $('[data-f="gramatura"]', el).value = p.gramatura; }
+      }
+      const extra = chosen.map((x) => x.texto).filter((t) => !p.descricao.includes(t));
+      p.descricao = [p.descricao.trim(), ...extra].filter(Boolean).join('\n\n');
+      $('#descricao', el).value = p.descricao;
+      $$('[data-preset]', el).forEach((sel) => { sel.value = ''; });
+      toast('Modelos inseridos na descrição.');
+    }
     else if (b.dataset.mock) { const id = +b.dataset.mock; p.mockupIds = p.mockupIds.includes(id) ? p.mockupIds.filter((x) => x !== id) : [...p.mockupIds, id]; drawDynamic(); }
     else if (b.id === 'del') {
       if (!await confirmDialog('Excluir produto', `Excluir <b>${esc(p.nome)}</b>? Arte, mockups e arquivo de produção continuam salvos.`, 'Excluir', true)) return;
@@ -195,6 +246,7 @@ export async function edit(el, [idStr], query) {
     try {
       const id = await db.products.put(p);
       toast('Produto salvo.');
+      autoPublish();
       location.hash = `#/produto/${id}`;
     } catch (err) { console.error(err); toast('Não foi possível salvar.', 'err'); }
   });

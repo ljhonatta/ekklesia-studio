@@ -12,6 +12,7 @@ import * as settings from './modules/settings.js';
 import * as production from './modules/production.js';
 import * as products from './modules/products.js';
 import * as catalog from './modules/catalog.js';
+import * as store from './modules/store.js';
 
 const r = (fn) => ({ render: fn });
 
@@ -31,6 +32,7 @@ const ROUTES = [
   [/^producao\/(\d+)$/, r(production.detail), 'producao'],
   [/^catalogo$/, r(catalog.list), 'catalogo'],
   [/^catalogo\/(\d+)$/, r(catalog.editor), 'catalogo'],
+  [/^loja$/, store, 'loja'],
   [/^config$/, settings, 'config'],
 ];
 

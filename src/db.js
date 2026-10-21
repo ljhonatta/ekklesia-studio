@@ -104,7 +104,8 @@ async function decode(v) {
 export async function exportBackup() {
   const out = { app: 'ekklesia-studio', schema: 1, exportedAt: new Date().toISOString(), tables: {} };
   for (const t of TABLES) {
-    const rows = await db.table(t).toArray();
+    let rows = await db.table(t).toArray();
+    if (t === 'settings') rows = rows.filter((r) => r.key !== 'lojaToken'); // segredo não vai para backup
     out.tables[t] = await Promise.all(rows.map(encode));
   }
   return new Blob([JSON.stringify(out)], { type: 'application/json' });
