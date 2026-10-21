@@ -149,9 +149,12 @@ async function localSnapshot() {
 }
 
 // ---------- sincronização ----------
-let running = null;
+let running = null, runningToken = null;
 export async function syncNow({ onProgress } = {}) {
-  if (running) return running;
+  const current = await getSetting('lojaToken', '');
+  if (running && runningToken === current) return running;
+  if (running) await running.catch(() => {});
+  runningToken = current;
   running = (async () => {
     const token = await getSetting('lojaToken', '');
     if (!token) { setStatus({ state: 'off', msg: 'Nuvem desligada (sem token).' }); return { off: true }; }
@@ -181,9 +184,9 @@ async function syncOnce(token, prog) {
     if (e.status === 409) throw new Error(`O repositório ${repo} está vazio: crie nele um primeiro arquivo (ex.: README).`);
     if (e.status === 404) {
       const visible = await gh(token, R).then(() => true).catch(() => false);
-      throw new Error(visible
-        ? `O repositório ${repo} não tem o ramo "${branch}".`
-        : `O token não tem acesso ao repositório ${repo}. No GitHub, edite o token e adicione esse repositório (Contents: Read and write).`);
+      if (visible) throw new Error(`O repositório ${repo} não tem o ramo "${branch}".`);
+      const loja = await gh(token, '/repos/ljhonatta/ekklesia-loja').then(() => 'vê a loja ✓').catch(() => 'não vê a loja ✗');
+      throw new Error(`O token em uso (terminado em …${token.slice(-4)}) não tem acesso a ${repo} (${loja}). Confira se colou o token novo; se for o novo, adicione esse repositório nele no GitHub.`);
     }
     throw e;
   }

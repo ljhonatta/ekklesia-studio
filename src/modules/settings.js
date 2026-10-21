@@ -120,7 +120,10 @@ export async function render(el) {
   $('#syncBtn', el).addEventListener('click', async (e) => {
     const b = e.currentTarget;
     b.disabled = true;
-    await setSetting('lojaToken', $('#cloudToken', el).value.trim());
+    const tk = $('#cloudToken', el).value.replace(/\s+/g, '');
+    $('#cloudToken', el).value = tk;
+    await setSetting('lojaToken', tk);
+    if (tk && !/^(github_pat_|ghp_)/.test(tk)) toast('Esse texto não parece um token do GitHub (começa com github_pat_).', 'err');
     setConf({ repo: $('#cloudRepo', el).value.trim() || getConf().repo });
     try { const r = await syncNow(); if (!r.off) toast(r.pulled || r.pushed ? `Sincronizado: ${r.pushed || 0} enviado(s), ${r.pulled || 0} recebido(s).` : 'Já estava tudo sincronizado.'); } catch (err) { toast(err.message, 'err'); }
     b.disabled = false;
