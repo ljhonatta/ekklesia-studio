@@ -505,6 +505,18 @@ h4.sub { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; colo
 .preset-item input, .preset-item textarea { height: 36px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text); font-size: 13px; resize: vertical; }
 .preset-item textarea { height: auto; min-height: 36px; }
 
+/* login */
+body.locked .app, body.locked .toasts { display: none; }
+.login { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: radial-gradient(ellipse at 50% 30%, #1a1712, var(--bg) 70%); }
+.login-card { width: min(380px, 100%); display: grid; gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 32px 28px; }
+.login-brand { display: grid; justify-items: center; gap: 4px; margin-bottom: 6px; }
+.login-brand .brand-mark { font-family: var(--serif); font-size: 34px; letter-spacing: .08em; line-height: 1; }
+.login-brand .brand-sub { font-size: 10px; letter-spacing: .42em; color: var(--gold); }
+.login-card .muted { text-align: center; font-size: 13px; }
+.login-card input { width: 100%; }
+.login-err { color: var(--danger); font-size: 13px; text-align: center; }
+.sidebar-foot .link { font-size: 11px; }
+
 /* ---------- responsivo ---------- */
 @media (max-width: 1280px) and (min-width: 861px) {
   :root { --sidebar: 64px; }

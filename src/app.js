@@ -1,5 +1,6 @@
 import { $, revokeURLs } from './util.js';
 import { NAV, ICONS } from './ui.js';
+import { isAuthed, renderLogin, logout } from './auth.js';
 import { getLogo, tinted } from './brand.js';
 import { setLabelLogo } from './compose.js';
 import * as dashboard from './modules/dashboard.js';
@@ -91,8 +92,14 @@ async function applyLogo() {
 }
 window.addEventListener('brand-logo', applyLogo);
 
-window.addEventListener('hashchange', route);
-applyLogo().finally(route);
+// Sem login, nada do Estúdio é montado.
+(async () => {
+  if (!isAuthed()) await renderLogin();
+  document.body.classList.remove('locked');
+  $('#logout')?.addEventListener('click', logout);
+  window.addEventListener('hashchange', route);
+  applyLogo().finally(route);
+})();
 
 // Pede ao navegador para não apagar os dados locais sob pressão de espaço.
 navigator.storage?.persist?.().catch(() => {});

@@ -17,3 +17,8 @@ Estúdio interno da marca EKKLESIA: ideia → arte → mockup → produto → ca
 
 ## Fases
 F1 base · F2 produto, produção, catálogo PDF e QR (atual) · F3 IA (Claude SVG + API de imagem, remoção de fundo) · F4 catálogo publicado · F5 mockups com modelo e novas peças.
+
+## Acesso (login)
+O Estúdio só abre com e-mail + senha (`src/auth.js`). No código fica só o hash PBKDF2-SHA256 de `email.lower() + "\n" + senha`, com 310000 iterações e um salt aleatório. Nunca coloque a senha em texto no repositório (ele é público). Para trocar a senha ou adicionar alguém, gere um registro novo:
+`python3 -c "import hashlib,base64,secrets;e='EMAIL';p='SENHA';s=secrets.token_bytes(16);print(base64.b64encode(s).decode(),base64.b64encode(hashlib.pbkdf2_hmac('sha256',(e.lower()+'\n'+p).encode(),s,310000)).decode())"`
+e coloque em `USERS`. Trocar o hash derruba as sessões abertas.
