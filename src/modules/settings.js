@@ -27,7 +27,7 @@ export async function render(el) {
         <div class="actions-row tight"><button class="btn primary sm" id="syncBtn">Sincronizar agora</button><button class="btn ghost sm" id="logoutBtn">Sair da conta</button></div></div>
       <p class="hint">Artes, mockups, produtos, fotos das peças e configurações ficam salvos no repositório <b>privado</b> do GitHub e sincronizam sozinhos entre os aparelhos. Em cada aparelho, cole o mesmo token uma vez.</p>
       <div class="form-grid two">
-        <label class="field"><span>Token do GitHub (o mesmo da Loja online)</span><input type="password" id="cloudToken" autocomplete="off" placeholder="github_pat_..."></label>
+        <label class="field"><span>Token do GitHub (o mesmo da Loja online)</span><span class="secret"><input type="password" id="cloudToken" autocomplete="off" placeholder="github_pat_..."><button type="button" class="btn ghost sm" id="tokShow">Mostrar</button><button type="button" class="btn ghost sm" id="tokCopy">Copiar</button></span></label>
         <label class="field"><span>Repositório de dados (privado)</span><input id="cloudRepo"></label>
       </div>
       <p class="hint">No token fine-grained, dê acesso aos repositórios <b>ekklesia-studio-dados</b> e <b>ekklesia-loja</b>, com <b>Contents: Read and write</b>.</p>
@@ -129,6 +129,12 @@ export async function render(el) {
     b.disabled = false;
   });
   $('#logoutBtn', el).addEventListener('click', logout);
+  $('#tokShow', el).addEventListener('click', (e) => { const i = $('#cloudToken', el); i.type = i.type === 'password' ? 'text' : 'password'; e.currentTarget.textContent = i.type === 'password' ? 'Mostrar' : 'Ocultar'; });
+  $('#tokCopy', el).addEventListener('click', async () => {
+    const v = $('#cloudToken', el).value.trim();
+    if (!v) { toast('Nenhum token neste aparelho.', 'err'); return; }
+    try { await navigator.clipboard.writeText(v); toast('Token copiado. Cole no Estúdio do outro aparelho.'); } catch { toast('Não deu para copiar: use Mostrar e copie à mão.', 'err'); }
+  });
 
   // ---- modelos de descrição ----
   let presets = structuredClone(await getPresets());
