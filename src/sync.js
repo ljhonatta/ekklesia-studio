@@ -178,7 +178,13 @@ async function syncOnce(token, prog) {
   prog('Verificando a nuvem…');
   let ref;
   try { ref = await gh(token, `${R}/git/ref/heads/${branch}`); } catch (e) {
-    if (e.status === 409 || e.status === 404) throw new Error(`Repositório de dados ${repo} não encontrado ou vazio.`);
+    if (e.status === 409) throw new Error(`O repositório ${repo} está vazio: crie nele um primeiro arquivo (ex.: README).`);
+    if (e.status === 404) {
+      const visible = await gh(token, R).then(() => true).catch(() => false);
+      throw new Error(visible
+        ? `O repositório ${repo} não tem o ramo "${branch}".`
+        : `O token não tem acesso ao repositório ${repo}. No GitHub, edite o token e adicione esse repositório (Contents: Read and write).`);
+    }
     throw e;
   }
   const head = await gh(token, `${R}/git/commits/${ref.object.sha}`);
