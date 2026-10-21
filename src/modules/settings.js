@@ -3,6 +3,8 @@ import { $, esc, fmtBytes, toast, confirmDialog, download } from '../util.js';
 import { pageHead, ICONS } from '../ui.js';
 import { getLogo, saveLogo, processLogo, tinted } from '../brand.js';
 import { getPresets, savePresets, PRESET_GROUPS, DEFAULT_PRESETS } from '../presets.js';
+import { syncNow, onStatus, getConf, setConf } from '../sync.js';
+import { logout } from '../auth.js';
 
 const BRAND_FIELDS = [
   { k: 'brandName', label: 'Nome da marca', ph: 'EKKLESIA' },
@@ -20,6 +22,17 @@ export async function render(el) {
 
   el.innerHTML = `
     ${pageHead({ eyebrow: 'Configurações', title: 'Marca e dados' })}
+    <section class="panel cloud-panel">
+      <div class="section-head"><h3>Nuvem: o Estúdio igual no celular e no computador</h3>
+        <div class="actions-row tight"><button class="btn primary sm" id="syncBtn">Sincronizar agora</button><button class="btn ghost sm" id="logoutBtn">Sair da conta</button></div></div>
+      <p class="hint">Artes, mockups, produtos, fotos das peças e configurações ficam salvos no repositório <b>privado</b> do GitHub e sincronizam sozinhos entre os aparelhos. Em cada aparelho, cole o mesmo token uma vez.</p>
+      <div class="form-grid two">
+        <label class="field"><span>Token do GitHub (o mesmo da Loja online)</span><input type="password" id="cloudToken" autocomplete="off" placeholder="github_pat_..."></label>
+        <label class="field"><span>Repositório de dados (privado)</span><input id="cloudRepo"></label>
+      </div>
+      <p class="hint">No token fine-grained, dê acesso aos repositórios <b>ekklesia-studio-dados</b> e <b>ekklesia-loja</b>, com <b>Contents: Read and write</b>.</p>
+      <p class="sync-line" id="syncLine"></p>
+    </section>
     <section class="panel logo-panel">
       <div class="section-head"><h3>Logo oficial</h3>
         <div class="actions-row tight">
@@ -61,7 +74,7 @@ export async function render(el) {
 
   async function drawLogo() {
     const l = await getLogo();
-    $('#logoRm', el).hidden = !l;
+    $('#logoRm', el).hidden = !l || l.padrao;
     $('#logoBtn', el).textContent = l ? 'Trocar logo' : 'Enviar logo';
     const box = $('#logoPrev', el);
     box.innerHTML = '';
@@ -93,6 +106,26 @@ export async function render(el) {
     drawLogo();
   });
   drawLogo();
+
+  // ---- nuvem ----
+  $('#cloudToken', el).value = await getSetting('lojaToken', '');
+  $('#cloudRepo', el).value = getConf().repo;
+  let unsub = null;
+  unsub = onStatus((s) => {
+    const line = $('#syncLine', el);
+    if (!line || !el.isConnected) { setTimeout(() => unsub?.()); return; }
+    line.className = `sync-line ${s.state}`;
+    line.textContent = s.state === 'ok' ? `Tudo sincronizado às ${new Date(s.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.` : s.state === 'running' ? (s.msg || 'Sincronizando…') : s.state === 'error' ? `Erro: ${s.msg}` : s.state === 'off' ? 'Nuvem desligada: cole o token para ligar.' : s.state === 'offline' ? 'Sem internet: as mudanças ficam neste aparelho e sobem quando voltar.' : '';
+  });
+  $('#syncBtn', el).addEventListener('click', async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    await setSetting('lojaToken', $('#cloudToken', el).value.trim());
+    setConf({ repo: $('#cloudRepo', el).value.trim() || getConf().repo });
+    try { const r = await syncNow(); if (!r.off) toast(r.pulled || r.pushed ? `Sincronizado: ${r.pushed || 0} enviado(s), ${r.pulled || 0} recebido(s).` : 'Já estava tudo sincronizado.'); } catch (err) { toast(err.message, 'err'); }
+    b.disabled = false;
+  });
+  $('#logoutBtn', el).addEventListener('click', logout);
 
   // ---- modelos de descrição ----
   let presets = structuredClone(await getPresets());

@@ -73,7 +73,7 @@ export async function buildStore(onProgress) {
     const paths = [];
     for (let k = 0; k < imgs.length; k++) {
       const im = await toJpegDataURL(imgs[k].blob, { bg: '#e9e6e0', max: 1400, pad: imgs[k].kind === 'art' ? 160 : 0 });
-      const path = `img/${p.slug}-${k + 1}.jpg`;
+      const path = `img/p/${p.slug}-${k + 1}.jpg`;
       files.set(path, dataURLBytes(im.url));
       paths.push(path);
     }
@@ -133,7 +133,7 @@ export async function publishStore(onProgress = () => {}) {
       n++;
     }
     // remove imagens de produtos que saíram da loja
-    for (const path of remote.keys()) if (path.startsWith('img/') && !files.has(path)) entries.push({ path, mode: '100644', type: 'blob', sha: null });
+    for (const path of remote.keys()) if (path.startsWith('img/p/') && !files.has(path)) entries.push({ path, mode: '100644', type: 'blob', sha: null });
     if (!entries.length) { await setSetting('lojaUltima', { at: Date.now(), produtos: data.produtos.length, mudancas: 0 }); return { changed: 0, produtos: data.produtos.length }; }
     onProgress('Gravando na loja…');
     const newTree = await gh(token, `${R}/git/trees`, { method: 'POST', body: JSON.stringify({ base_tree: head.tree.sha, tree: entries }) });

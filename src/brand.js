@@ -65,7 +65,11 @@ export async function processLogo(file) {
 let cache;
 export async function getLogo() {
   if (cache !== undefined) return cache;
-  const l = await getSetting('logo', null);
+  let l = await getSetting('logo', null);
+  if (!l) {
+    // logo oficial que acompanha o app (usada até alguém enviar outra)
+    try { l = await processLogo(await (await fetch('assets/logo.png')).blob()); l.padrao = true; } catch { l = null; }
+  }
   cache = l ? { ...l, img: await loadRaw(l.mask) } : null;
   return cache;
 }

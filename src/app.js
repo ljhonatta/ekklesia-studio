@@ -1,6 +1,9 @@
 import { $, revokeURLs } from './util.js';
 import { NAV, ICONS } from './ui.js';
 import { isAuthed, renderLogin, logout } from './auth.js';
+import { installHooksOnce, startAutoSync, onStatus, syncNow } from './sync.js';
+
+installHooksOnce(); // ids únicos e marcação de mudanças desde o início
 import { getLogo, tinted } from './brand.js';
 import { setLabelLogo } from './compose.js';
 import * as dashboard from './modules/dashboard.js';
@@ -92,6 +95,8 @@ async function applyLogo() {
 }
 window.addEventListener('brand-logo', applyLogo);
 
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
 // Sem login, nada do Estúdio é montado.
 (async () => {
   if (!isAuthed()) await renderLogin();
@@ -99,7 +104,30 @@ window.addEventListener('brand-logo', applyLogo);
   $('#logout')?.addEventListener('click', logout);
   window.addEventListener('hashchange', route);
   applyLogo().finally(route);
+  startAutoSync();
 })();
+
+// Indicador da nuvem no menu
+const fmtHour = (t) => new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+onStatus((s) => {
+  const el = $('#syncStatus');
+  if (!el) return;
+  const map = { running: ['run', s.msg || 'Sincronizando…'], ok: ['ok', `Nuvem: salvo às ${s.at ? fmtHour(s.at) : ''}`], error: ['err', 'Nuvem: erro (ver Configurações)'], off: ['off', 'Nuvem desligada'], offline: ['off', 'Sem internet: salvo aqui'], idle: ['off', 'Nuvem…'] };
+  const [cls, txt] = map[s.state] || map.idle;
+  el.className = `sync-status ${cls}`;
+  el.textContent = txt;
+  el.title = s.msg || '';
+});
+document.addEventListener('click', (e) => { if (e.target.closest('#syncStatus')) syncNow().catch(() => {}); });
+
+// Dados novos de outro aparelho: atualiza a tela se não houver edição em andamento
+const SAFE = /^(|designs|design\/\d+|mockups|produtos|produto\/\d+|producao|catalogo|loja)$/;
+window.addEventListener('data-synced', () => {
+  const p = location.hash.replace(/^#\/?/, '').split('?')[0];
+  if (SAFE.test(p)) route();
+  else import('./util.js').then(({ toast }) => toast('Chegaram dados de outro aparelho. Recarregue a tela quando terminar esta edição.'));
+  applyLogo();
+});
 
 // Pede ao navegador para não apagar os dados locais sob pressão de espaço.
 navigator.storage?.persist?.().catch(() => {});

@@ -517,6 +517,30 @@ body.locked .app, body.locked .toasts { display: none; }
 .login-err { color: var(--danger); font-size: 13px; text-align: center; }
 .sidebar-foot .link { font-size: 11px; }
 
+/* web app instalado: área do relógio/gesto */
+@media (display-mode: standalone) {
+  .sidebar { padding-top: calc(28px + env(safe-area-inset-top)); }
+  .toasts { bottom: calc(20px + env(safe-area-inset-bottom)); }
+}
+@media (display-mode: standalone) and (max-width: 860px) {
+  .sidebar { padding-top: calc(10px + env(safe-area-inset-top)); }
+}
+
+/* nuvem */
+.sidebar-foot { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.sync-status { background: none; border: 0; padding: 0; cursor: pointer; font-size: 11px; color: var(--dim); display: inline-flex; align-items: center; gap: 6px; text-align: left; }
+.sync-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex: none; }
+.sync-status.ok::before { background: var(--ok); }
+.sync-status.run::before { background: var(--gold); animation: pulse 1s infinite; }
+.sync-status.err { color: var(--danger); }
+.sync-status.err::before { background: var(--danger); }
+.cloud-panel { margin-bottom: 20px; border-color: rgba(196,169,107,.35); }
+.sync-line { font-size: 13px; color: var(--muted); margin-top: 10px; }
+.sync-line.ok { color: var(--ok); }
+.sync-line.error { color: var(--danger); }
+.sync-line.running { color: var(--gold); }
+.cloud-banner { border: 1px solid rgba(196,169,107,.35); background: var(--gold-soft); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 13.5px; }
+
 /* ---------- responsivo ---------- */
 @media (max-width: 1280px) and (min-width: 861px) {
   :root { --sidebar: 64px; }
@@ -532,7 +556,9 @@ body.locked .app, body.locked .toasts { display: none; }
   .detail-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 860px) {
-  .app { grid-template-columns: 1fr; }
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .sidebar { min-width: 0; }
+  .nav { min-width: 0; flex: 1; }
   .sidebar { position: sticky; top: 0; z-index: 20; height: auto; flex-direction: row; align-items: center; gap: 12px; padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
   .brand-mark { font-size: 20px; }
   .brand-mark.has-logo img { width: 84px; }

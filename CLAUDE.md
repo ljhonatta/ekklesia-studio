@@ -22,3 +22,9 @@ F1 base · F2 produto, produção, catálogo PDF e QR (atual) · F3 IA (Claude S
 O Estúdio só abre com e-mail + senha (`src/auth.js`). No código fica só o hash PBKDF2-SHA256 de `email.lower() + "\n" + senha`, com 310000 iterações e um salt aleatório. Nunca coloque a senha em texto no repositório (ele é público). Para trocar a senha ou adicionar alguém, gere um registro novo:
 `python3 -c "import hashlib,base64,secrets;e='EMAIL';p='SENHA';s=secrets.token_bytes(16);print(base64.b64encode(s).decode(),base64.b64encode(hashlib.pbkdf2_hmac('sha256',(e.lower()+'\n'+p).encode(),s,310000)).decode())"`
 e coloque em `USERS`. Trocar o hash derruba as sessões abertas.
+
+## Nuvem (sincronização)
+`src/sync.js` sincroniza todas as tabelas com o repositório **privado** `ljhonatta/ekklesia-studio-dados`: `db/<tabela>/<chave>.json` e `blobs/<git-sha>` para as imagens. O merge é de 3 vias contra a base salva em localStorage (`ekk-sync`); quando os dois lados mudam, vence o `updatedAt` mais recente. Hooks do Dexie geram ids únicos entre aparelhos (`Date.now()*1000+rand`) e carimbam `updatedAt` em toda alteração. `lojaToken` e `lojaUltima` não sincronizam.
+
+## Web app
+`manifest.webmanifest` + `sw.js` (rede primeiro, cache como reserva offline). Os ícones ficam em `assets/icons/` e a logo padrão em `assets/logo.png`.

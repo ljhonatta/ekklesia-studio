@@ -1,6 +1,7 @@
 import { db, currentVersions } from '../db.js';
 import { designCard, mockupCard, pageHead, empty, ICONS } from '../ui.js';
 import { esc } from '../util.js';
+import { getSetting } from '../db.js';
 
 const FLOW = [
   ['Ideia', true], ['Arte', true], ['Mockup', true], ['Produção', true], ['Produto', true], ['Catálogo', true], ['Venda', false],
@@ -20,7 +21,9 @@ export async function render(el) {
 
   const stat = (n, label, note = '') => `<div class="stat"><div class="stat-n">${n}</div><div class="stat-l">${label}</div>${note ? `<div class="stat-note">${note}</div>` : ''}</div>`;
 
+  const hasCloud = !!(await getSetting('lojaToken', ''));
   el.innerHTML = `
+    ${hasCloud ? '' : `<div class="cloud-banner"><span><b>Nuvem desligada neste aparelho.</b> Conecte para ver aqui as artes, mockups e produtos feitos nos outros aparelhos.</span><a class="btn primary sm" href="#/config">Conectar nuvem</a></div>`}
     ${pageHead({
       eyebrow: 'EKKLESIA STUDIO',
       title: 'Da ideia à <em>peça</em>.',
