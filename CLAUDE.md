@@ -28,3 +28,6 @@ e coloque em `USERS`. Trocar o hash derruba as sessões abertas.
 
 ## Web app
 `manifest.webmanifest` + `sw.js` (rede primeiro, cache como reserva offline). Os ícones ficam em `assets/icons/` e a logo padrão em `assets/logo.png`.
+
+## Antes de cada commit
+Rode `python3 tools/stamp.py`. Ele carimba a versão (hash) dos JS/CSS no `index.html`, com um importmap, para o navegador nunca usar uma cópia velha.
