@@ -32,6 +32,7 @@ export async function render(el) {
       </div>
       <p class="hint">No token fine-grained, dê acesso aos repositórios <b>ekklesia-studio-dados</b> e <b>ekklesia-loja</b>, com <b>Contents: Read and write</b>.</p>
       <p class="sync-line" id="syncLine"></p>
+      <p class="hint" id="deviceInv"></p>
     </section>
     <section class="panel logo-panel">
       <div class="section-head"><h3>Logo oficial</h3>
@@ -108,6 +109,14 @@ export async function render(el) {
   drawLogo();
 
   // ---- nuvem ----
+  const { db } = await import('../db.js');
+  async function inventory() {
+    const [d, m, p, f] = await Promise.all([db.designs.count(), db.mockups.count(), db.products.count(), db.photos.count()]);
+    const box = $('#deviceInv', el);
+    if (box) box.innerHTML = `Neste aparelho agora: <b>${d}</b> design(s), <b>${m}</b> mockup(s), <b>${p}</b> produto(s), <b>${f}</b> foto(s) de peças.${d + m + p + f === 0 ? ' <b>Nada para enviar daqui.</b>' : ''}`;
+    return d + m + p + f;
+  }
+  inventory();
   $('#cloudToken', el).value = await getSetting('lojaToken', '');
   $('#cloudRepo', el).value = getConf().repo;
   let unsub = null;
@@ -125,7 +134,11 @@ export async function render(el) {
     await setSetting('lojaToken', tk);
     if (tk && !/^(github_pat_|ghp_)/.test(tk)) toast('Esse texto não parece um token do GitHub (começa com github_pat_).', 'err');
     setConf({ repo: $('#cloudRepo', el).value.trim() || getConf().repo });
-    try { const r = await syncNow(); if (!r.off) toast(r.pulled || r.pushed ? `Sincronizado: ${r.pushed || 0} enviado(s), ${r.pulled || 0} recebido(s).` : 'Já estava tudo sincronizado.'); } catch (err) { toast(err.message, 'err'); }
+    try {
+      const r = await syncNow();
+      const total = await inventory();
+      if (!r.off) toast(r.pulled || r.pushed ? `Sincronizado: ${r.pushed || 0} enviado(s), ${r.pulled || 0} recebido(s).` : total ? 'Já estava tudo sincronizado.' : 'Este navegador está vazio: não havia nada para enviar.');
+    } catch (err) { toast(err.message, 'err'); }
     b.disabled = false;
   });
   $('#logoutBtn', el).addEventListener('click', logout);
