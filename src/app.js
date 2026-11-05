@@ -18,6 +18,7 @@ import * as products from './modules/products.js';
 import * as catalog from './modules/catalog.js';
 import * as store from './modules/store.js';
 import * as aiGen from './modules/ai-generator.js';
+import * as vendas from './modules/vendas.js';
 
 const r = (fn) => ({ render: fn });
 
@@ -38,6 +39,7 @@ const ROUTES = [
   [/^producao\/(\d+)$/, r(production.detail), 'producao'],
   [/^catalogo$/, r(catalog.list), 'catalogo'],
   [/^catalogo\/(\d+)$/, r(catalog.editor), 'catalogo'],
+  [/^vendas$/, vendas, 'vendas'],
   [/^loja$/, store, 'loja'],
   [/^config$/, settings, 'config'],
 ];

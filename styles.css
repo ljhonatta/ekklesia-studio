@@ -639,3 +639,49 @@ body.locked .app, body.locked .toasts { display: none; }
 .launch-head .thumb { width: 64px; height: 64px; border-radius: 8px; overflow: hidden; flex: none; display: grid; place-items: center; }
 .launch-head .thumb img { max-width: 100%; max-height: 100%; }
 .launch-head div { display: grid; gap: 2px; }
+
+/* vendas */
+.v-login { max-width: 520px; }
+.v-top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.v-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.v-kpis > div { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: grid; gap: 4px; background: var(--surface); }
+.v-kpis span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.v-kpis b { font-size: 22px; }
+.v-kpis small { color: var(--muted); }
+.warn { color: var(--warn, #e0a33a); }
+.v-table { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+.v-table table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.v-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.v-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.v-table td small { display: block; color: var(--muted); }
+.v-table tbody tr[data-id] { cursor: pointer; }
+.v-table tbody tr[data-id]:hover { background: var(--surface-2); }
+.v-table tr.late td:first-child { box-shadow: inset 3px 0 0 #c55; }
+.v-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; white-space: nowrap; color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); background: color-mix(in srgb, var(--c) 14%, transparent); }
+.toolbar input#vBusca { min-width: 220px; }
+.v-detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 24px; }
+.v-detail h4 { margin: 14px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--gold); }
+.v-detail h4:first-child { margin-top: 0; }
+.v-mini { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.v-mini td { padding: 5px 0; border-bottom: 1px dashed var(--line); }
+.v-mini td:last-child { text-align: right; }
+.v-mini tr.tot td { font-weight: 600; border-bottom: 0; padding-top: 8px; }
+.link.danger { color: var(--danger); }
+.v-cal-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+.v-cal-head h3 { margin: 0; min-width: 170px; text-align: center; }
+.v-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin-bottom: 18px; }
+.v-dow { color: var(--muted); font-size: 12px; text-align: center; padding: 4px 0; }
+.v-day { min-height: 86px; border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: grid; align-content: start; gap: 3px; background: var(--surface); }
+.v-day.today { border-color: var(--gold); }
+.v-day b { font-size: 12px; color: var(--muted); }
+.v-day button { all: unset; cursor: pointer; font-size: 11px; padding: 2px 5px; border-radius: 4px; color: #fff; background: color-mix(in srgb, var(--c) 70%, #000); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 16px; }
+.v-line { all: unset; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; cursor: pointer; padding: 8px 0; border-bottom: 1px solid var(--line); width: 100%; font-size: 13.5px; }
+.v-bars { display: flex; align-items: flex-end; gap: 4px; height: 180px; overflow-x: auto; }
+.v-bars div { flex: 1 0 22px; display: grid; grid-template-rows: 1fr auto; height: 100%; align-items: end; }
+.v-bars i { display: block; background: var(--gold); border-radius: 4px 4px 0 0; }
+.v-bars small { font-size: 10px; color: var(--muted); text-align: center; }
+.v-qty { width: 70px; }
+.form-grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.v-cfg { max-width: 560px; }
+@media (max-width: 860px) { .v-detail { grid-template-columns: minmax(0, 1fr); } .form-grid.four { grid-template-columns: 1fr 1fr; } .v-day { min-height: 60px; } .v-day button { font-size: 9px; } }
