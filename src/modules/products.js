@@ -1,14 +1,24 @@
-import { db, getSetting } from '../db.js';
-import { $, $$, esc, objURL, toast, confirmDialog, slugify } from '../util.js';
-import { CATEGORIAS, SIZES, TECNICAS, DISPONIBILIDADE, PRODUCT_STATUS, brl, parsePrice, installmentText, tecLabel, dispLabel, buyLink, DEFAULT_BRAND } from '../data.js';
+import { db, getSetting, setSetting } from '../db.js';
+import { $, $$, esc, objURL, toast, confirmDialog, modal, slugify } from '../util.js';
+import { CATEGORIAS, SIZES, TECNICAS, DISPONIBILIDADE, PRODUCT_STATUS, brl, parsePrice, installmentText, tecLabel, dispLabel, buyLink, DEFAULT_BRAND, precoPorMargem, margemDe, pct } from '../data.js';
 import { COLORS } from '../garments.js';
-import { productImages, nextSku, uniqueSlug } from '../products.js';
+import { productImages, nextSku, uniqueSlug, duplicateProduct } from '../products.js';
 import { getPresets, PRESET_GROUPS } from '../presets.js';
 import { autoPublish } from '../store-publish.js';
 
 const GENEROS = ['Unissex', 'Masculino', 'Feminino'];
 const generoFor = (cat) => (/feminina|babylook/i.test(cat) ? 'Feminino' : /masculina/i.test(cat) ? 'Masculino' : 'Unissex');
 import { pageHead, empty, ICONS, pill } from '../ui.js';
+
+export const DEFAULT_MARGENS = { normal: 80, lancamento: 77 };
+const getMargens = async () => ({ ...DEFAULT_MARGENS, ...(await getSetting('margens', {})) });
+// Preço que vale na loja agora: o de lançamento enquanto houver vagas.
+const precoLanc = (p, loja) => (p.precoLancamento || (p.preco ? Math.round(p.preco * (1 - (p.lancDesconto ?? loja.lancDesconto ?? 40) / 100) * 100) / 100 : null));
+const priceLine = (p, loja = {}) => {
+  if (!p.preco) return 'sem preço';
+  const m = margemDe(p.preco, p.custo);
+  return p.lancamento ? `${brl(precoLanc(p, loja))} lanç. · ${brl(p.preco)}` : `${brl(p.preco)}${m != null ? ` · ${pct(m)}` : ''}`;
+};
 
 const colorHex = (name) => COLORS.find((c) => c.label.toLowerCase() === String(name).toLowerCase())?.hex || '#777';
 const statusPill = (p) => (p.status === 'ativo' ? pill('aprovado', 'Ativo') : pill('criacao', 'Rascunho'));
@@ -17,32 +27,73 @@ const statusPill = (p) => (p.status === 'ativo' ? pill('aprovado', 'Ativo') : pi
 export async function list(el) {
   const all = await db.products.orderBy('id').reverse().toArray();
   const covers = new Map(await Promise.all(all.map(async (p) => [p.id, (await productImages(p))[0]])));
+  const loja = await getSetting('loja', {});
   let filter = 'todos';
+  const inFilter = (p) => filter === 'todos' || (filter === 'base' ? p.base : p.status === filter);
   el.innerHTML = `
     ${pageHead({
       eyebrow: 'Gerenciamento',
       title: 'Produtos',
       lede: 'Cada produto liga a arte, o arquivo de produção, os mockups e o link de venda.',
-      actions: `<a class="btn primary" href="#/produto/new">${ICONS.plus}<span>Novo produto</span></a>`,
+      actions: `<button class="btn" id="margem">Ajustar preços pela margem</button><a class="btn primary" href="#/produto/new">${ICONS.plus}<span>Novo produto</span></a>`,
     })}
     <div class="toolbar"><div class="chips">
-      ${[['todos', 'Todos'], ['ativo', 'Ativos'], ['rascunho', 'Rascunhos']].map(([id, l]) => `<button class="chip" data-f="${id}">${l} <b>${id === 'todos' ? all.length : all.filter((p) => p.status === id).length}</b></button>`).join('')}
+      ${[['todos', 'Todos'], ['ativo', 'Ativos'], ['rascunho', 'Rascunhos'], ['base', 'Peças base']].map(([id, l]) => `<button class="chip" data-f="${id}">${l} <b>${id === 'todos' ? all.length : id === 'base' ? all.filter((p) => p.base).length : all.filter((p) => p.status === id).length}</b></button>`).join('')}
     </div></div>
+    ${all.some((p) => p.base) ? '<p class="hint">Peças base = modelos do fornecedor com preço e ficha prontos. Abra uma, clique em <b>Duplicar</b>, troque a arte e deixe <b>Ativo</b> para ir à loja.</p>' : ''}
     <div id="list"></div>`;
   const draw = () => {
     $$('[data-f]', el).forEach((b) => b.classList.toggle('active', b.dataset.f === filter));
-    const items = all.filter((p) => filter === 'todos' || p.status === filter);
+    const items = all.filter(inFilter);
     $('#list', el).innerHTML = items.length ? `<div class="grid">${items.map((p) => {
       const c = covers.get(p.id);
       return `<a class="card mockup-card" href="#/produto/${p.id}">
         <div class="thumb ${c?.kind === 'art' ? 'checker' : ''}">${c ? `<img src="${objURL(c.blob)}" alt="" loading="lazy" class="${c.kind === 'art' ? 'contain' : ''}">` : ''}</div>
         <div class="card-body"><div class="card-title">${esc(p.nome)}</div>
-          <div class="card-meta"><span>${esc(p.sku || '')} · ${p.preco ? brl(p.preco) : 'sem preço'}</span>${statusPill(p)}</div></div></a>`;
+          <div class="card-meta"><span>${esc(p.sku || '')} · ${priceLine(p, loja)}</span>${statusPill(p)}</div></div></a>`;
     }).join('')}</div>` : all.length ? empty('Nada por aqui', 'Nenhum produto com esse filtro.')
       : empty('Nenhum produto ainda', 'Cadastre a primeira peça da coleção.', `<a class="btn primary" href="#/produto/new">${ICONS.plus}<span>Novo produto</span></a>`);
   };
-  el.addEventListener('click', (e) => { const b = e.target.closest('[data-f]'); if (b) { filter = b.dataset.f; draw(); } });
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-f]');
+    if (b) { filter = b.dataset.f; draw(); }
+    if (e.target.closest('#margem')) adjustMargins(all.filter(inFilter), filter === 'todos' ? 'todos os produtos' : 'os produtos deste filtro');
+  });
   draw();
+}
+
+// Recalcula preço normal e de lançamento a partir do custo de cada peça.
+async function adjustMargins(items, scopeLabel) {
+  const m = await getMargens();
+  const withCost = items.filter((p) => p.custo);
+  if (!withCost.length) { toast('Nenhum produto com custo cadastrado neste filtro.', 'err'); return; }
+  const ok = await modal({
+    title: 'Ajustar preços pela margem',
+    body: `<p>Vale para ${scopeLabel} que têm custo (${withCost.length}). Margem = quanto do preço de venda é lucro. O preço arredonda para cima em X9,99.</p>
+      <div class="form-grid two">
+        <label class="field"><span>Margem do preço normal (%)</span><input id="mN" inputmode="decimal" value="${m.normal}"></label>
+        <label class="field"><span>Margem do preço de lançamento (%)</span><input id="mL" inputmode="decimal" value="${m.lancamento}"></label>
+      </div><p class="hint" id="mEx"></p>`,
+    actions: [{ label: 'Cancelar', value: false }, { label: 'Aplicar', value: true, kind: 'primary' }],
+    onOpen: (box) => {
+      const ex = withCost[0];
+      const upd = () => { $('#mEx', box).textContent = `Ex.: ${ex.nome} (custo ${brl(ex.custo)}) → ${brl(precoPorMargem(ex.custo, +$('#mN', box).value.replace(',', '.')))} normal · ${brl(precoPorMargem(ex.custo, +$('#mL', box).value.replace(',', '.')))} no lançamento.`; };
+      box.addEventListener('input', upd); upd();
+      m._box = box;
+    },
+  });
+  if (!ok) return;
+  const normal = +$('#mN', m._box).value.replace(',', '.'), lancamento = +$('#mL', m._box).value.replace(',', '.');
+  if (!(normal > 0 && normal < 100 && lancamento > 0 && lancamento < 100)) { toast('Margens precisam ficar entre 1 e 99%.', 'err'); return; }
+  await setSetting('margens', { normal, lancamento });
+  await db.transaction('rw', db.products, async () => {
+    for (const p of withCost) {
+      await db.products.update(p.id, { preco: precoPorMargem(p.custo, normal), precoLancamento: precoPorMargem(p.custo, lancamento), margemNormal: normal, margemLancamento: lancamento });
+    }
+  });
+  toast(`Preços de ${withCost.length} produto(s) atualizados.`);
+  autoPublish();
+  window.dispatchEvent(new HashChangeEvent('hashchange'));
 }
 
 // ---------- formulário (novo / editar) ----------
@@ -53,11 +104,13 @@ export async function edit(el, [idStr], query) {
     tecnica: 'dtf', cores: [], tamanhos: ['P', 'M', 'G', 'GG'], medidas: {}, preco: null, parcelas: 3, semJuros: true,
     disponibilidade: 'disponivel', status: 'rascunho', linkCompra: '', designId: +query.design || null, productionFileId: null, mockupIds: [],
     genero: 'Unissex', versiculo: '', lancamento: false, lancDesconto: null, lancLimite: null, lancVendidos: 0,
+    custo: null, precoLancamento: null, fotos: [],
   } : await db.products.get(+idStr);
   if (!p) { el.innerHTML = empty('Produto não encontrado', '', '<a class="btn" href="#/produtos">Voltar</a>'); return; }
   p = structuredClone(p);
   p.genero ||= generoFor(p.categoria);
   const loja = await getSetting('loja', {});
+  const margens = await getMargens();
   const presets = await getPresets();
   let slugTouched = !isNew;
 
@@ -126,6 +179,13 @@ export async function edit(el, [idStr], query) {
           <label class="toggle inline"><input type="checkbox" data-f="semJuros" ${p.semJuros !== false ? 'checked' : ''}><span>Sem juros</span></label>
         </div>
         <p class="hint" id="parcInfo"></p>
+        <div class="form-grid three">
+          <label class="field"><span>Custo da peça (R$)</span><input data-f="custo" inputmode="decimal" placeholder="29,00" value="${p.custo != null ? String(p.custo).replace('.', ',') : ''}"></label>
+          <label class="field"><span>Margem desejada (%)</span><input id="margemAlvo" inputmode="decimal" value="${p.margemNormal ?? margens.normal}"></label>
+          <button type="button" class="btn" id="calcPreco">Calcular preço pela margem</button>
+        </div>
+        <p class="hint" id="margemInfo"></p>
+        ${p.fornecedor ? `<p class="hint">Fornecedor: <b>${esc(p.fornecedor.nome)}</b> · ${esc(p.fornecedor.ref)} · varejo ${brl(p.fornecedor.varejo)} · atacado ${brl(p.fornecedor.atacado)} · alto atacado ${brl(p.fornecedor.altoAtacado)} (custo usado). Só aparece aqui no Estúdio.</p>` : ''}
         ${input('linkCompra', 'Link de compra', 'type="url" placeholder="https://loja.../produto"')}
         <p class="hint">Sem link, o botão do catálogo leva ao WhatsApp da marca (definido em Configurações).</p>
       </section>
@@ -135,7 +195,7 @@ export async function edit(el, [idStr], query) {
         <p class="hint">Produtos com status <b>Ativo</b> vão para a loja ao publicar.</p>
         <label class="toggle"><input type="checkbox" data-f="lancamento" ${p.lancamento ? 'checked' : ''}><span>Lançamento com desconto para as primeiras unidades</span></label>
         <div class="form-grid three" id="lancBox">
-          <label class="field"><span>Desconto (%)</span><input data-f="lancDesconto" inputmode="numeric" placeholder="${loja.lancDesconto ?? 40}" value="${esc(p.lancDesconto ?? '')}"></label>
+          <label class="field"><span>Preço de lançamento (R$)</span><input data-f="precoLancamento" inputmode="decimal" placeholder="${p.custo ? String(precoPorMargem(p.custo, margens.lancamento)).replace('.', ',') : '129,99'}" value="${p.precoLancamento != null ? String(p.precoLancamento).replace('.', ',') : ''}"></label>
           <label class="field"><span>Primeiras unidades</span><input data-f="lancLimite" inputmode="numeric" placeholder="${loja.lancLimite ?? 50}" value="${esc(p.lancLimite ?? '')}"></label>
           <label class="field"><span>Já vendidas no lançamento</span><input data-f="lancVendidos" inputmode="numeric" value="${esc(p.lancVendidos ?? 0)}"></label>
         </div>
@@ -149,6 +209,7 @@ export async function edit(el, [idStr], query) {
           <label class="field"><span>Arquivo de produção</span><select data-f="productionFileId" id="pfSel"></select></label>
         </div>
         <div class="field"><span>Mockups (clique na ordem: o primeiro é a capa)</span><div class="mock-pick" id="mocks"></div></div>
+        <div class="field" id="fotosBox"><span>Fotos da peça base (usadas na loja quando não há mockup nem arte)</span><div class="mock-pick" id="fotos"></div></div>
       </section>
 
       <div class="form-actions">
@@ -168,8 +229,12 @@ export async function edit(el, [idStr], query) {
       </tbody></table>` : '<p class="hint">Selecione os tamanhos.</p>';
     $('#parcInfo', el).textContent = installmentText(p) || (p.preco ? `${brl(p.preco)} à vista` : '');
     $('#lancBox', el).hidden = !p.lancamento;
-    const desc = +(p.lancDesconto ?? loja.lancDesconto ?? 40), lim = +(p.lancLimite ?? loja.lancLimite ?? 50);
-    $('#lancInfo', el).textContent = p.lancamento && p.preco ? `Na loja: de ${brl(p.preco)} por ${brl(p.preco * (1 - desc / 100))} · restam ${Math.max(0, lim - (+p.lancVendidos || 0))} de ${lim}.` : '';
+    const lim = +(p.lancLimite ?? loja.lancLimite ?? 50), pl = precoLanc(p, loja);
+    $('#lancInfo', el).textContent = p.lancamento && p.preco ? `Na loja: de ${brl(p.preco)} por ${brl(pl)} (−${Math.round((1 - pl / p.preco) * 100)}%) · restam ${Math.max(0, lim - (+p.lancVendidos || 0))} de ${lim}. Depois volta para ${brl(p.preco)}.` : '';
+    const mN = margemDe(p.preco, p.custo), mL = p.lancamento ? margemDe(pl, p.custo) : null;
+    $('#margemInfo', el).innerHTML = p.custo ? `Custo ${brl(p.custo)}${mN != null ? ` · margem no preço normal <b>${pct(mN)}</b> (lucro ${brl(p.preco - p.custo)})` : ''}${mL != null ? ` · no lançamento <b>${pct(mL)}</b> (lucro ${brl(pl - p.custo)})` : ''}` : 'Informe o custo para ver a margem.';
+    $('#fotosBox', el).hidden = !p.fotos?.length;
+    $('#fotos', el).innerHTML = (p.fotos || []).map((b, i) => `<button type="button" class="mock on" data-rmfoto="${i}" title="Remover esta foto"><img src="${objURL(b)}" alt=""><b>✕</b></button>`).join('');
     const pfs = files.filter((f) => !p.designId || f.designId === p.designId);
     $('#pfSel', el).innerHTML = `<option value="">— nenhum —</option>${pfs.map((f) => opt(f.id, `${f.name} · ${tecLabel(f.tecnica)} · ${f.widthCm}×${f.heightCm} cm`, p.productionFileId)).join('')}`;
     const ordered = [...mockups].sort((a, b) => (b.designId === p.designId) - (a.designId === p.designId));
@@ -191,7 +256,7 @@ export async function edit(el, [idStr], query) {
     if (f === 'semJuros') p.semJuros = t.checked;
     else if (f === 'lancamento') { p.lancamento = t.checked; drawDynamic(); return; }
     else if (['lancDesconto', 'lancLimite', 'lancVendidos'].includes(f)) { p[f] = t.value === '' ? null : Math.max(0, parseInt(t.value, 10) || 0); drawDynamic(); return; }
-    else if (f === 'preco') p.preco = parsePrice(t.value);
+    else if (f === 'preco' || f === 'custo' || f === 'precoLancamento') { p[f] = parsePrice(t.value); drawDynamic(); return; }
     else if (f === 'parcelas') p.parcelas = +t.value;
     else if (f === 'designId' || f === 'productionFileId') p[f] = t.value ? +t.value : null;
     else p[f] = t.value;
@@ -208,6 +273,16 @@ export async function edit(el, [idStr], query) {
     if (!b) return;
     if (b.dataset.cor) { const c = b.dataset.cor; p.cores = p.cores.includes(c) ? p.cores.filter((x) => x !== c) : [...p.cores, c]; drawDynamic(); }
     else if (b.dataset.tam) { const s = b.dataset.tam; p.tamanhos = p.tamanhos.includes(s) ? p.tamanhos.filter((x) => x !== s) : [...p.tamanhos, s]; drawDynamic(); }
+    else if (b.id === 'calcPreco') {
+      const m = parseFloat($('#margemAlvo', el).value.replace(',', '.'));
+      if (!p.custo) { toast('Informe o custo da peça.', 'err'); return; }
+      if (!(m > 0 && m < 100)) { toast('Margem entre 1 e 99%.', 'err'); return; }
+      p.preco = precoPorMargem(p.custo, m); p.margemNormal = m;
+      $('[data-f="preco"]', el).value = String(p.preco).replace('.', ',');
+      if (p.lancamento && p.precoLancamento == null) { p.precoLancamento = precoPorMargem(p.custo, margens.lancamento); $('[data-f="precoLancamento"]', el).value = String(p.precoLancamento).replace('.', ','); }
+      drawDynamic();
+    }
+    else if (b.dataset.rmfoto) { p.fotos = p.fotos.filter((_, i) => i !== +b.dataset.rmfoto); drawDynamic(); }
     else if (b.id === 'applyPresets') {
       const chosen = $$('[data-preset]', el).map((sel) => presets.find((x) => x.id === sel.value)).filter(Boolean);
       if (!chosen.length) { toast('Escolha ao menos um modelo.', 'err'); return; }
@@ -258,6 +333,7 @@ export async function page(el, [idStr]) {
   const p = await db.products.get(+idStr);
   if (!p) { el.innerHTML = empty('Produto não encontrado', '', '<a class="btn" href="#/produtos">Voltar</a>'); return; }
   const brand = { ...DEFAULT_BRAND, ...(await getSetting('brand', {})) };
+  const loja = await getSetting('loja', {});
   const imgs = await productImages(p);
   const design = p.designId ? await db.designs.get(p.designId) : null;
   const pf = p.productionFileId ? await db.productionFiles.get(p.productionFileId) : null;
@@ -268,8 +344,9 @@ export async function page(el, [idStr]) {
   el.innerHTML = `
     <div class="product-top">
       <a class="back" href="#/produtos">${ICONS.back}<span>Produtos</span></a>
-      <div class="actions-row tight"><a class="btn" href="#/produto/${p.id}/editar">Editar ficha</a></div>
+      <div class="actions-row tight"><button class="btn" id="dup">Duplicar</button><a class="btn" href="#/produto/${p.id}/editar">Editar ficha</a></div>
     </div>
+    ${p.base ? '<p class="banner">Peça base do fornecedor: clique em <b>Duplicar</b> para criar um produto com a sua arte (mesmo preço e ficha).</p>' : ''}
     ${missing.length ? `<p class="banner warn">Falta preencher: ${missing.join(', ')}.</p>` : ''}
     <article class="pdp">
       <div class="pdp-gallery">
@@ -279,7 +356,8 @@ export async function page(el, [idStr]) {
       <div class="pdp-info">
         <p class="eyebrow">${esc(p.sku || '')} · ${esc(p.categoria)}</p>
         <h1>${esc(p.nome)}</h1>
-        <div class="pdp-price">${p.preco ? brl(p.preco) : '<span class="muted">Sem preço</span>'}</div>
+        <div class="pdp-price">${p.preco ? (p.lancamento ? `${brl(precoLanc(p, loja))} <s class="muted">${brl(p.preco)}</s>` : brl(p.preco)) : '<span class="muted">Sem preço</span>'}</div>
+        ${p.lancamento ? `<div class="muted">Lançamento: as primeiras ${p.lancLimite ?? loja.lancLimite ?? 50} peças (vendidas: ${p.lancVendidos || 0}).</div>` : ''}
         ${installmentText(p) ? `<div class="muted">${installmentText(p)}</div>` : ''}
         <div class="pdp-avail">${pill(p.disponibilidade === 'esgotado' ? 'producao' : 'aprovado', dispLabel(p.disponibilidade))} ${p.status === 'ativo' ? '' : pill('criacao', 'Rascunho')}</div>
         ${p.descricao ? `<p class="pdp-desc">${esc(p.descricao).replace(/\n/g, '<br>')}</p>` : ''}
@@ -291,6 +369,7 @@ export async function page(el, [idStr]) {
         <dl class="kv">
           <dt>Material</dt><dd>${esc(p.material || '—')}${p.gramatura ? ` · ${esc(p.gramatura)} g/m²` : ''}</dd>
           <dt>Técnica</dt><dd>${tecLabel(p.tecnica)}</dd>
+          ${p.custo ? `<dt>Custo · margem</dt><dd>${brl(p.custo)} · ${pct(margemDe(p.preco, p.custo))}${p.lancamento ? ` (lançamento ${pct(margemDe(precoLanc(p, loja), p.custo))})` : ''}</dd>` : ''}
         </dl>
         ${buy ? `<a class="btn primary lg block buy" href="${esc(buy.url)}" target="_blank" rel="noopener">${p.linkCompra ? 'COMPRAR AGORA' : 'COMPRAR PELO WHATSAPP'}</a>` : '<button class="btn lg block" disabled>Cadastre o link de compra</button>'}
       </div>
@@ -306,7 +385,13 @@ export async function page(el, [idStr]) {
       </div>
     </section>`;
 
-  el.addEventListener('click', (e) => {
+  el.addEventListener('click', async (e) => {
+    if (e.target.closest('#dup')) {
+      const id = await duplicateProduct(p.id);
+      toast('Cópia criada. Troque o nome e a arte.');
+      location.hash = `#/produto/${id}/editar`;
+      return;
+    }
     const b = e.target.closest('[data-img]');
     if (!b) return;
     $('#mainImg', el).src = objURL(imgs[+b.dataset.img].blob);

@@ -10,8 +10,18 @@ export const TECNICAS = [
 ];
 export const tecLabel = (id) => TECNICAS.find((t) => t.id === id)?.label || id || '—';
 
-export const CATEGORIAS = ['Camiseta masculina', 'Camiseta feminina', 'Babylook', 'Oversized', 'Manga longa', 'Regata', 'Short', 'Conjunto', 'Moletom', 'Boné'];
-export const SIZES = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XGG'];
+export const CATEGORIAS = ['Camiseta masculina', 'Camiseta feminina', 'Babylook', 'Oversized', 'Polo', 'Manga longa', 'Regata', 'Short', 'Bermuda', 'Calça', 'Conjunto', 'Moletom', 'Jaqueta', 'Suéter', 'Meia', 'Boné'];
+export const SIZES = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XGG', 'G1', 'G2', 'G3', '36', '38', '40', '42', '44', '46', '48', '50'];
+
+// Preço a partir do custo e da margem (% do preço de venda), arredondado para cima em X9,99.
+// Ex.: custo 29 e margem 77% → 126,09 → 129,99.
+export function precoPorMargem(custo, margem) {
+  if (!custo || !(margem < 100)) return null;
+  const v = custo / (1 - margem / 100);
+  return Math.round((Math.ceil((v + 0.01) / 10) * 10 - 0.01) * 100) / 100;
+}
+export const margemDe = (preco, custo) => (preco && custo ? Math.round((1 - custo / preco) * 1000) / 10 : null);
+export const pct = (n) => (n == null ? '—' : `${String(n).replace('.', ',')}%`);
 
 export const DISPONIBILIDADE = [
   { id: 'disponivel', label: 'Disponível' },

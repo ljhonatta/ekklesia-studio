@@ -9,16 +9,22 @@ import { toast, canvasToBlob } from './util.js';
 
 export const DEFAULT_LOJA = {
   repo: 'ljhonatta/ekklesia-loja', branch: 'main', dominio: 'ekklesiastoreide.com.br', auto: false,
-  pixChave: '', pixNome: 'EKKLESIA', pixCidade: 'RONDONOPOLIS', whatsapp: '',
+  pixChave: 'contato@ekklesiastoreide.com.br', pixNome: 'GABRIEL DA SILVA MOTA', pixCidade: 'RONDONOPOLIS', whatsapp: '',
   entradaPct: 50, lancDesconto: 40, lancLimite: 50, freteGratisAcima: 299,
   heroTitulo: 'Vista o que você crê', heroDestaque: 'EKKLESIA', heroVersiculo: '"Ide por todo o mundo e pregai o evangelho." — Mc 16:15',
   heroTexto: 'Streetwear cristão premium. Cada peça é uma declaração de fé, feita para ser vestida com propósito.',
-  faixa: 'MODA COM PROPÓSITO ✦ IDE POR TODO O MUNDO ✦ PRÉ-VENDA COM 50% DE ENTRADA NO PIX ✦ PRODUÇÃO SOB ENCOMENDA',
+  faixa: 'PROMOÇÃO DE LANÇAMENTO NAS 50 PRIMEIRAS PEÇAS ✦ GARANTA COM 50% DE ENTRADA NO PIX OU PAGUE O TOTAL ✦ MODA COM PROPÓSITO',
   manifesto: 'EKKLESIA não é só uma loja. É um movimento. Cada peça que você veste é uma declaração: você não compra roupa, você veste um propósito.',
   prazoProducao: '',
 };
 
-export async function getLoja() { return { ...DEFAULT_LOJA, ...(await getSetting('loja', {})) }; }
+export async function getLoja() {
+  const saved = await getSetting('loja', {});
+  const loja = { ...DEFAULT_LOJA, ...saved };
+  // Pix em branco volta para a conta padrão da marca.
+  for (const k of ['pixChave', 'pixNome', 'pixCidade']) if (!String(loja[k] || '').trim()) loja[k] = DEFAULT_LOJA[k];
+  return loja;
+}
 export const getToken = () => getSetting('lojaToken', '');
 
 // ---------- GitHub ----------
@@ -77,15 +83,17 @@ export async function buildStore(onProgress) {
       files.set(path, dataURLBytes(im.url));
       paths.push(path);
     }
-    const desconto = p.lancamento ? +(p.lancDesconto ?? loja.lancDesconto) : 0;
     const limite = +(p.lancLimite ?? loja.lancLimite);
     const restam = p.lancamento ? Math.max(0, limite - (+p.lancVendidos || 0)) : null;
+    // preço de lançamento fixo (ex.: 129,99) ou, sem ele, o desconto em %
+    const precoLancamento = p.precoLancamento || Math.round(p.preco * (1 - +(p.lancDesconto ?? loja.lancDesconto) / 100) * 100) / 100;
+    const desconto = Math.round((1 - precoLancamento / p.preco) * 100);
     items.push({
       slug: p.slug, sku: p.sku, nome: p.nome, categoria: p.categoria, genero: p.genero || 'Unissex', versiculo: p.versiculo || '',
       descricao: p.descricao || '', material: p.material || '', gramatura: p.gramatura || '', tecnica: tecLabel(p.tecnica),
       cores: p.cores || [], tamanhos: p.tamanhos || [], medidas: p.medidas || {},
       preco: p.preco, disponibilidade: p.disponibilidade,
-      lancamento: p.lancamento && restam > 0 ? { desconto, limite, restam, precoLancamento: Math.round(p.preco * (1 - desconto / 100) * 100) / 100 } : null,
+      lancamento: p.lancamento && restam > 0 && precoLancamento < p.preco ? { desconto, limite, restam, precoLancamento } : null,
       imagens: paths, atualizado: p.updatedAt,
     });
   }

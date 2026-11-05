@@ -598,3 +598,14 @@ body.locked .app, body.locked .toasts { display: none; }
   .swatches { grid-template-columns: repeat(10, 1fr); }
   .list:not(.list-2) { grid-template-columns: 1fr 1fr; }
 }
+
+/* gerador de Pix */
+.pix-tool { margin-bottom: 20px; }
+.px-list { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 6px; }
+.px-list li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 8px 12px; border: 1px solid var(--line, #2a2a2a); border-radius: 8px; }
+.px-list li span { flex: 1; min-width: 0; }
+.px-out { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 8px; }
+.px-qr svg { display: block; border-radius: 8px; max-width: 100%; height: auto; }
+.px-valor { font-size: 1.1rem; }
+.px-out textarea { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }
+@media (max-width: 640px) { .px-out { grid-template-columns: minmax(0, 1fr); } .px-qr { justify-self: center; } }
