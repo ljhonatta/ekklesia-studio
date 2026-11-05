@@ -10,7 +10,7 @@ import {
   getFirestore, collection, doc, onSnapshot, getDoc, setDoc, updateDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
-export const ADMINS = ['jhonatta258@gmail.com'];
+export const ADMINS = ['jhonatta258@gmail.com', 'contato@ekklesiastoreide.com.br'];
 
 const app = initializeApp({
   apiKey: 'AIzaSyBsRilnRr--ay_nQhCobwY9tAhlxficYKg',
