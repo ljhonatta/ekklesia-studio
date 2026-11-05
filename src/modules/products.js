@@ -347,9 +347,11 @@ export async function page(el, [idStr]) {
   el.innerHTML = `
     <div class="product-top">
       <a class="back" href="#/produtos">${ICONS.back}<span>Produtos</span></a>
-      <div class="actions-row tight"><button class="btn" id="dup">Duplicar</button><a class="btn" href="#/produto/${p.id}/editar">Editar ficha</a></div>
+      <div class="actions-row tight">${p.base && p.peca ? '<button class="btn primary" id="withArt">Criar produto com arte</button>' : ''}<button class="btn" id="dup">Duplicar</button><a class="btn" href="#/produto/${p.id}/editar">Editar ficha</a></div>
     </div>
-    ${p.base ? '<p class="banner">Peça base do fornecedor: clique em <b>Duplicar</b> para criar um produto com a sua arte (mesmo preço e ficha).</p>' : ''}
+    ${p.base ? (p.peca
+      ? '<p class="banner">Modelo base: clique em <b>Criar produto com arte</b>, escolha a arte e as cores. O Estúdio estampa em todas as fotos desta peça e já manda o produto para o site.</p><p class="hint" id="artProgress"></p>'
+      : '<p class="banner">Peça base do fornecedor: clique em <b>Duplicar</b> para criar um produto com a sua arte (mesmo preço e ficha).</p>') : ''}
     ${p.status === 'ativo' && p.linkCompra ? `<p class="banner sale-link">À venda no site: <a class="link" href="${esc(p.linkCompra)}" target="_blank" rel="noopener">${esc(p.linkCompra)}</a> <button class="btn sm" id="copyLink">Copiar link</button></p>` : ''}
     ${missing.length ? `<p class="banner warn">Falta preencher: ${missing.join(', ')}.</p>` : ''}
     <article class="pdp">
@@ -390,6 +392,20 @@ export async function page(el, [idStr]) {
     </section>`;
 
   el.addEventListener('click', async (e) => {
+    if (e.target.closest('#withArt')) {
+      const btn = e.target.closest('#withArt');
+      const { applyArtFlow, createProductWithArt } = await import('./apply-art.js');
+      const opts = await applyArtFlow(p);
+      if (!opts) return;
+      btn.disabled = true;
+      const prog = $('#artProgress', el);
+      try {
+        const id = await createProductWithArt(p, opts, (m) => { prog.textContent = `Estampando ${m}…`; });
+        toast(opts.ativo ? 'Produto criado e indo para o site.' : 'Produto criado como rascunho.');
+        location.hash = `#/produto/${id}`;
+      } catch (err) { console.error(err); toast(err.message, 'err'); prog.textContent = ''; btn.disabled = false; }
+      return;
+    }
     if (e.target.closest('#copyLink')) { navigator.clipboard.writeText(p.linkCompra).then(() => toast('Link copiado.')); return; }
     if (e.target.closest('#dup')) {
       const id = await duplicateProduct(p.id);

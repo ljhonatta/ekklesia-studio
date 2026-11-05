@@ -32,6 +32,9 @@ e coloque em `USERS`. Trocar o hash derruba as sessões abertas.
 ## Encaixe da estampa
 `shirt.js` gera `torsoMask` (peça sem as mangas) e `torso` (caixa); fotos sem pessoa usam `analyzeGarment` (recorte pelo fundo). Área `total` = frente/costas inteira, arte em cover. Frente/costas recortam pela `torsoMask`; mangas pela máscara inteira.
 
+## Modelos base + criar produto com arte
+Fotos de modelo vestindo ficam em `photos` com `peca` ('oversize-masc' | 'oversize-fem' | 'tech-fem') e `cor`. Produtos base com o mesmo `peca` ganham o botão "Criar produto com arte" (`src/modules/apply-art.js`): estampa a arte (costas/frente, área escolhida) em todas as fotos das cores marcadas, troca a cor da tinta pelo tom cadastrado da camisa e cria o produto (Ativo = vai para o site).
+
 ## Web app
 `manifest.webmanifest` + `sw.js` (rede primeiro, cache como reserva offline). Os ícones ficam em `assets/icons/` e a logo padrão em `assets/logo.png`.
 

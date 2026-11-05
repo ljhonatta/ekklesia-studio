@@ -81,7 +81,7 @@ export async function buildStore(onProgress) {
   let i = 0;
   for (const p of products) {
     onProgress?.(`Preparando ${++i} de ${products.length}: ${p.nome}`);
-    const imgs = (await productImages(p)).slice(0, 5);
+    const imgs = (await productImages(p)).slice(0, 8);
     const paths = [];
     for (let k = 0; k < imgs.length; k++) {
       const im = await toJpegDataURL(imgs[k].blob, { bg: '#e9e6e0', max: 1400, pad: imgs[k].kind === 'art' ? 160 : 0, marca });
