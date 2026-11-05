@@ -5,7 +5,7 @@
 import { db, getSetting } from './db.js';
 
 export const SYNC_TABLES = ['designs', 'versions', 'mockups', 'products', 'productionFiles', 'catalogs', 'catalogItems', 'settings', 'photos'];
-const LOCAL_ONLY_SETTINGS = new Set(['lojaToken', 'lojaUltima']);
+const LOCAL_ONLY_SETTINGS = new Set(['lojaToken', 'lojaUltima', 'openaiKey']);
 const STATE_KEY = 'ekk-sync';
 const CONF_KEY = 'ekk-sync-conf';
 

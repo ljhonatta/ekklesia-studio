@@ -42,7 +42,11 @@ export async function render(el, [param], query) {
   if (st.source === 'vector' && isNew) st.layer.area = defaultArea('frente');
 
   let design = null, version = null, img = null;
-  let photo = null, photoImg = null, photoMask = null;
+  let photo = null, photoImg = null, photoMask = null, torsoMask = null;
+  const loadMasks = async (p) => {
+    photoMask = p?.shirt?.ok && p.shirt.mask ? await loadImage(p.shirt.mask) : null;
+    torsoMask = p?.shirt?.ok && p.shirt.torsoMask ? await loadImage(p.shirt.torsoMask) : null;
+  };
   const tintCache = new Map();
   let filterTipo = '', filterVista = '';
   let calibrating = false, calRect = null, showAll = false, aiState = '';
@@ -56,7 +60,7 @@ export async function render(el, [param], query) {
   async function loadPhoto() {
     photo = st.photoId ? photos.find((p) => p.id === st.photoId) || await db.photos.get(st.photoId) : null;
     photoImg = photo ? await loadImage(photo.image) : null;
-    photoMask = photo?.shirt?.ok && photo.shirt.mask ? await loadImage(photo.shirt.mask) : null;
+    await loadMasks(photo);
     if (st.source === 'photo' && !photo) st.source = 'vector';
   }
   await Promise.all([loadArt(), loadPhoto()]);
@@ -68,10 +72,11 @@ export async function render(el, [param], query) {
     syncControls();
     try {
       await detectPhoto(target);
-      if (photo === target) photoMask = target.shirt?.ok ? await loadImage(target.shirt.mask) : null;
+      if (photo === target) await loadMasks(target);
       const i = photos.findIndex((x) => x.id === target.id);
       if (i >= 0) photos[i] = target;
       aiState = '';
+      if (!target.pose.ok && target.shirt?.ok) toast('IA recortou a peça (sem modelo): use “Costas/Frente inteira (justo)” para preencher o tronco.');
       if (target.pose.ok) toast(target.shirt?.ok ? `IA encontrou o corpo e a ${photoLabel(target).toLowerCase()}.` : 'IA encontrou o corpo; a roupa não ficou clara, use “Ajustar na foto” se precisar.');
     } catch (e) { console.error(e); aiState = 'error'; }
     if (photo === target) update();
@@ -141,7 +146,7 @@ export async function render(el, [param], query) {
           <div class="field"><span>Cor da arte</span>
             <div class="tints" id="tints"><button data-tint="" title="Cores originais">Original</button>${TINTS.map(([h, l]) => `<button data-tint="${h}" title="${l}" style="--c:${h}"></button>`).join('')}<label class="tint-custom" title="Outra cor"><input type="color" id="tintColor"></label></div>
           </div>
-          <label class="toggle small photo-only"><input type="checkbox" id="clipToggle" checked><span>Só onde tem roupa (não cobre braço, mão ou fundo)</span></label>
+          <label class="toggle small photo-only"><input type="checkbox" id="clipToggle" checked><span>Só no tronco da peça (não vaza para mangas, braço ou fundo)</span></label>
           <div class="field photo-only"><span>Tinta</span>
             <div class="seg seg-wrap" id="blendSeg"><button data-blend="normal">Normal</button><button data-blend="multiply">Absorvida (peça clara)</button></div>
           </div>
@@ -153,6 +158,7 @@ export async function render(el, [param], query) {
             <button class="btn primary" id="save">${rec ? 'Salvar' : 'Salvar mockup'}</button>
             <button class="btn" id="saveNew" ${rec ? '' : 'hidden'}>Salvar como novo</button>
           </div>
+          <button class="btn block photo-only" id="aiReal" title="Envia a montagem para o GPT Image e devolve com cara de foto real">✦ Deixar realista com IA</button>
           <div class="ed-row">
             <button class="btn" data-export="image/png">${ICONS.download}<span>PNG</span></button>
             <button class="btn" data-export="image/jpeg">${ICONS.download}<span>JPG</span></button>
@@ -205,7 +211,7 @@ export async function render(el, [param], query) {
   ro.observe(wrap);
 
   const opts = () => (isPhoto()
-    ? { photo, img: photoImg, mask: photoMask, layers: img ? [{ ...st.layer, tint: null, img: artImg() }] : [], showArea: true, showAllAreas: showAll, showMask: showAll }
+    ? { photo, img: photoImg, mask: photoMask, torsoMask, layers: img ? [{ ...st.layer, tint: null, img: artImg() }] : [], showArea: true, showAllAreas: showAll, showMask: showAll }
     : { garment: st.garment, view: st.view, color: st.color, bg: st.bg, layers: img ? [{ ...st.layer, img: artImg() }] : [] });
   const draw = (c, scale, guides, fast = false) => (isPhoto() ? renderPhotoMockup(c, opts(), { scale, guides, fast }) : renderMockup(c, opts(), { scale, guides }));
 
@@ -492,7 +498,7 @@ export async function render(el, [param], query) {
         layers: img ? [{ ...st.layer, versionId: version.id }] : [],
         render: full, thumb, updatedAt: now,
       };
-      if (rec && !asNew) { await db.mockups.update(rec.id, data); rec = { ...rec, ...data }; toast('Alterações salvas neste mockup.'); }
+      if (rec && !asNew && !rec.ai) { await db.mockups.update(rec.id, data); rec = { ...rec, ...data }; toast('Alterações salvas neste mockup.'); }
       else {
         const id = await db.mockups.add({ ...data, createdAt: now });
         rec = { id, ...data };
@@ -506,6 +512,39 @@ export async function render(el, [param], query) {
       toast('Não foi possível salvar o mockup.', 'err');
     } finally { btn.disabled = false; }
   }
+
+  // ---------- IA: deixa a montagem com cara de foto real ----------
+  $('#aiReal', el).addEventListener('click', async (e) => {
+    const b = e.currentTarget;
+    if (!img) { toast('Escolha a arte primeiro.', 'err'); return; }
+    const { getKey, realisticMockup } = await import('../openai.js');
+    if (!await getKey()) { toast('Cole a chave da OpenAI em Configurações → Inteligência artificial.', 'err'); return; }
+    b.disabled = true; b.textContent = 'IA trabalhando… (até 1 min)';
+    try {
+      const before = await renderBlob('image/png', 1);
+      const after = await realisticMockup(before);
+      const keep = await modal({
+        title: 'Resultado da IA', wide: true,
+        body: `<div class="ai-compare"><figure><img src="${objURL(before)}" alt=""><figcaption>Montagem</figcaption></figure><figure><img src="${objURL(after)}" alt=""><figcaption>Com IA: confira se a arte ficou igual antes de usar</figcaption></figure></div>`,
+        actions: [{ label: 'Descartar', value: false }, { label: 'Baixar', value: 'dl' }, { label: 'Salvar como mockup', value: 'save', kind: 'primary' }],
+      });
+      if (keep === 'dl') download(after, `${slugify(autoName())}-ia.png`);
+      if (keep === 'save') {
+        const im = await loadImage(after);
+        const tc = document.createElement('canvas');
+        tc.width = 480; tc.height = Math.round(480 * (im.naturalHeight / im.naturalWidth));
+        tc.getContext('2d').drawImage(im, 0, 0, tc.width, tc.height);
+        const now = Date.now();
+        await db.mockups.add({
+          name: `${$('#mockName', el).value.trim() || autoName()} · IA`, source: 'photo', ai: true, photoId: photo?.id || null, photoName: photo ? photoLabel(photo) : null,
+          designId: st.designId || null, garment: st.garment, view: photo?.vista === 'costas' ? 'costas' : 'frente', color: st.color, bg: st.bg,
+          layers: [{ ...st.layer, versionId: version.id }], render: after, thumb: await canvasToBlob(tc, 'image/jpeg', 0.85), createdAt: now, updatedAt: now,
+        });
+        toast('Mockup com IA salvo em Mockups.');
+      }
+    } catch (err) { console.error(err); toast(err.message, 'err'); }
+    b.disabled = false; b.textContent = '✦ Deixar realista com IA';
+  });
 
   drawPhotoGrid();
   if (rec?.name) $('#mockName', el).value = rec.name;

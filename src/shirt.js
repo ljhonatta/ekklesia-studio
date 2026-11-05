@@ -37,6 +37,128 @@ export function colorName(rgb) {
  * img: imagem da foto; pose: resultado de detectPose (normalizado).
  * Retorna métricas normalizadas (0–1 da foto) + máscara PNG.
  */
+// Tronco sem mangas: em cada linha fica só o trecho ligado ao centro, limitado
+// pelas laterais medidas abaixo das axilas (onde já não há manga).
+function torsoOf(m, mw, mh, cx, yMax = mh - 1) {
+  const runs = new Array(mh).fill(null);
+  for (let y = 0; y <= Math.min(mh - 1, yMax); y++) {
+    let x = Math.round(cx);
+    if (x < 0 || x >= mw) continue;
+    if (!m[y * mw + x]) { // centro pode cair numa costura/sombra: procura perto
+      let k = 1;
+      while (k < mw * 0.04 && !(m[y * mw + x + k] || m[y * mw + x - k])) k++;
+      if (k >= mw * 0.04) continue;
+      x = m[y * mw + x + k] ? x + k : x - k;
+    }
+    let l = x, r = x;
+    while (l > 0 && m[y * mw + l - 1]) l--;
+    while (r < mw - 1 && m[y * mw + r + 1]) r++;
+    runs[y] = [l, r];
+  }
+  const ys = runs.map((v, y) => (v ? y : -1)).filter((y) => y >= 0);
+  if (ys.length < mh * 0.1) return null;
+  const top = ys[0], bot = ys[ys.length - 1], H = bot - top;
+  const med = (a) => { const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
+  const band = ys.filter((y) => y > top + H * 0.58 && y < top + H * 0.9);
+  if (band.length < 3) return null;
+  const halfL = med(band.map((y) => cx - runs[y][0])) * 1.02, halfR = med(band.map((y) => runs[y][1] - cx)) * 1.02;
+  const t = new Uint8Array(mw * mh);
+  let tTop = null, tBot = 0;
+  for (const y of ys) {
+    const [l, r] = runs[y];
+    const L = Math.max(l, Math.round(cx - halfL)), R = Math.min(r, Math.round(cx + halfR));
+    if (R - L < (halfL + halfR) * 0.25) continue; // gancho do cabide, pescoço
+    for (let x = L; x <= R; x++) t[y * mw + x] = 1;
+    if (tTop === null) tTop = y;
+    tBot = y;
+  }
+  if (tTop === null) return null;
+  return { t, box: { l: (cx - halfL) / mw, r: (cx + halfR) / mw, t: tTop / mh, b: tBot / mh } };
+}
+
+async function maskPNG(m, mw, mh) {
+  const out = document.createElement('canvas');
+  out.width = mw; out.height = mh;
+  const octx = out.getContext('2d');
+  const od = octx.createImageData(mw, mh);
+  for (let p = 0; p < m.length; p++) { od.data[p * 4] = od.data[p * 4 + 1] = od.data[p * 4 + 2] = 255; od.data[p * 4 + 3] = m[p] ? 255 : 0; }
+  octx.putImageData(od, 0, 0);
+  return canvasToBlob(out, 'image/png');
+}
+
+function fillHoles(m, mw, mh) {
+  const N = mw * mh, outside = new Uint8Array(N), queue = new Int32Array(N);
+  let qh = 0, qt = 0;
+  const push = (p) => { if (!m[p] && !outside[p]) { outside[p] = 1; queue[qt++] = p; } };
+  for (let x = 0; x < mw; x++) { push(x); push((mh - 1) * mw + x); }
+  for (let y = 0; y < mh; y++) { push(y * mw); push(y * mw + mw - 1); }
+  while (qh < qt) {
+    const p = queue[qh++]; const x = p % mw, y = (p - x) / mw;
+    if (x > 0) push(p - 1);
+    if (x < mw - 1) push(p + 1);
+    if (y > 0) push(p - mw);
+    if (y < mh - 1) push(p + mw);
+  }
+  for (let p = 0; p < N; p++) if (!m[p] && !outside[p]) m[p] = 1;
+}
+
+// Peça sem pessoa (cabide, mesa, fundo liso): separa do fundo pela cor das bordas.
+export async function analyzeGarment(img) {
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  const mw = MW, mh = Math.round((MW * ih) / iw), N = mw * mh;
+  const c = document.createElement('canvas');
+  c.width = mw; c.height = mh;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, mw, mh);
+  const d = ctx.getImageData(0, 0, mw, mh).data;
+  const LAB = new Float32Array(N * 3);
+  for (let p = 0; p < N; p++) { const v = lab(d[p * 4], d[p * 4 + 1], d[p * 4 + 2]); LAB[p * 3] = v[0]; LAB[p * 3 + 1] = v[1]; LAB[p * 3 + 2] = v[2]; }
+  const at = (p) => [LAB[p * 3], LAB[p * 3 + 1], LAB[p * 3 + 2]];
+  // fundo: mediana da borda
+  const border = [];
+  for (let x = 0; x < mw; x += 2) border.push(at(x), at((mh - 1) * mw + x));
+  for (let y = 0; y < mh; y += 2) border.push(at(y * mw), at(y * mw + mw - 1));
+  const bg = [0, 1, 2].map((k) => { const a = border.map((v) => v[k]).sort((x, y) => x - y); return a[Math.floor(a.length / 2)]; });
+  const spread = border.map((v) => dist(v, bg, 1)).sort((x, y) => x - y)[Math.floor(border.length * 0.8)];
+  const T = Math.max(10, spread * 1.6);
+  // peça = maior região diferente do fundo que passa pelo meio da foto
+  const fg = new Uint8Array(N);
+  for (let p = 0; p < N; p++) fg[p] = dist(at(p), bg, 1) > T ? 1 : 0;
+  let seed = null;
+  for (const [fx, fy] of [[0.5, 0.5], [0.5, 0.42], [0.5, 0.6], [0.45, 0.5], [0.55, 0.5]]) {
+    const s0 = Math.round(fy * mh) * mw + Math.round(fx * mw);
+    if (fg[s0]) { seed = s0; break; }
+  }
+  if (seed === null) return { ok: false };
+  const m = new Uint8Array(N), queue = new Int32Array(N);
+  let qh = 0, qt = 0;
+  m[seed] = 1; queue[qt++] = seed;
+  while (qh < qt) {
+    const p = queue[qh++]; const x = p % mw, y = (p - x) / mw;
+    for (const q of [x > 0 ? p - 1 : -1, x < mw - 1 ? p + 1 : -1, y > 0 ? p - mw : -1, y < mh - 1 ? p + mw : -1]) {
+      if (q >= 0 && fg[q] && !m[q]) { m[q] = 1; queue[qt++] = q; }
+    }
+  }
+  if (qt < N * 0.05) return { ok: false };
+  fillHoles(m, mw, mh);
+  let sx = 0, n = 0;
+  for (let y = Math.round(mh * 0.3); y < mh * 0.8; y++) for (let x = 0; x < mw; x++) if (m[y * mw + x]) { sx += x; n++; }
+  const cx = n ? sx / n : mw / 2;
+  const tor = torsoOf(m, mw, mh, cx);
+  if (!tor) return { ok: false };
+  let rr = 0, gg = 0, bb = 0, k = 0;
+  for (let p = 0; p < N; p += 3) if (tor.t[p]) { rr += d[p * 4]; gg += d[p * 4 + 1]; bb += d[p * 4 + 2]; k++; }
+  const rgb = [rr / k, gg / k, bb / k].map(Math.round);
+  const named = colorName(rgb);
+  const b = tor.box;
+  return {
+    ok: true, noBody: true,
+    mask: await maskPNG(m, mw, mh), torsoMask: await maskPNG(tor.t, mw, mh), torso: b,
+    collar: { x: (b.l + b.r) / 2, y: b.t }, hem: { x: (b.l + b.r) / 2, y: b.b }, center: { x: (b.l + b.r) / 2, y: b.t + (b.b - b.t) * 0.3 },
+    rgb, colorName: named.n, colorHex: named.h, at: Date.now(),
+  };
+}
+
 export async function analyzeShirt(img, pose, { longSleeve = false } = {}) {
   const iw = img.naturalWidth, ih = img.naturalHeight;
   const mw = MW, mh = Math.round((MW * ih) / iw);
@@ -146,20 +268,7 @@ export async function analyzeShirt(img, pose, { longSleeve = false } = {}) {
     return o;
   };
   const m = morph(morph(mask, 2, true), 2, false);
-  // preenche buracos internos
-  const outside = new Uint8Array(N);
-  qh = qt = 0;
-  const pushOut = (p) => { if (!m[p] && !outside[p]) { outside[p] = 1; queue[qt++] = p; } };
-  for (let x = 0; x < mw; x++) { pushOut(x); pushOut((mh - 1) * mw + x); }
-  for (let y = 0; y < mh; y++) { pushOut(y * mw); pushOut(y * mw + mw - 1); }
-  while (qh < qt) {
-    const p = queue[qh++]; const x = p % mw, y = (p - x) / mw;
-    if (x > 0) pushOut(p - 1);
-    if (x < mw - 1) pushOut(p + 1);
-    if (y > 0) pushOut(p - mw);
-    if (y < mh - 1) pushOut(p + mw);
-  }
-  for (let p = 0; p < N; p++) if (!m[p] && !outside[p]) m[p] = 1;
+  fillHoles(m, mw, mh);
 
   let area = 0;
   for (let p = 0; p < N; p++) area += m[p];
@@ -196,18 +305,14 @@ export async function analyzeShirt(img, pose, { longSleeve = false } = {}) {
   const rgb = [rr / n, gg / n, bb / n].map(Math.round);
   const named = colorName(rgb);
 
-  // máscara em PNG (branco + alfa)
-  const out = document.createElement('canvas');
-  out.width = mw; out.height = mh;
-  const octx = out.getContext('2d');
-  const od = octx.createImageData(mw, mh);
-  for (let p = 0; p < N; p++) { od.data[p * 4] = od.data[p * 4 + 1] = od.data[p * 4 + 2] = 255; od.data[p * 4 + 3] = m[p] ? 255 : 0; }
-  octx.putImageData(od, 0, 0);
+  // tronco sem mangas (estampas de frente/costas não vazam para os lados)
+  const tor = torsoOf(m, mw, mh, fromLocal(midX, chestY).x, fromLocal(midX, hem).y + 2); // não passa da barra (calça da mesma cor)
 
   const norm = (X, Y) => { const q = fromLocal(X, Y); return { x: +(q.x / mw).toFixed(4), y: +(q.y / mh).toFixed(4) }; };
   return {
     ok: true,
-    mask: await canvasToBlob(out, 'image/png'),
+    mask: await maskPNG(m, mw, mh),
+    torsoMask: tor ? await maskPNG(tor.t, mw, mh) : null, torso: tor ? tor.box : null,
     collar: norm(midX, collar), hem: norm(midX, hem), center: norm(midX, chestY),
     widthRatio: +widthRatio.toFixed(2), lengthRatio: +lengthRatio.toFixed(2),
     rgb, colorName: named.n, colorHex: named.h,

@@ -609,3 +609,25 @@ body.locked .app, body.locked .toasts { display: none; }
 .px-valor { font-size: 1.1rem; }
 .px-out textarea { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }
 @media (max-width: 640px) { .px-out { grid-template-columns: minmax(0, 1fr); } .px-qr { justify-self: center; } }
+
+/* gerador IA */
+.ai-grid { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.ai-grid .seg-full button { height: 34px; }
+.ref-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.ref { position: relative; width: 72px; height: 72px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--bg); }
+.ref img { width: 100%; height: 100%; object-fit: cover; }
+.ref b { position: absolute; left: 4px; top: 2px; font-size: 11px; color: #fff; text-shadow: 0 0 3px #000; }
+.ref button { position: absolute; right: 2px; top: 2px; width: 20px; height: 20px; border: 0; border-radius: 50%; background: rgba(0,0,0,.7); color: #fff; cursor: pointer; font-size: 11px; }
+.ai-cards, .ai-busy { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.ai-busy { margin-bottom: 16px; }
+.ai-card { margin: 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+.ai-card img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
+.ai-card figcaption { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; background: var(--surface); }
+.ai-card.loading { aspect-ratio: 1; display: grid; place-items: center; color: var(--muted); animation: aipulse 1.4s ease-in-out infinite; }
+@keyframes aipulse { 50% { opacity: .45; } }
+.empty-ai { display: grid; gap: 6px; place-items: center; text-align: center; min-height: 320px; border: 1px dashed var(--line); border-radius: var(--radius); padding: 24px; }
+@media (max-width: 900px) { .ai-grid { grid-template-columns: minmax(0, 1fr); } }
+.ai-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ai-compare figure { margin: 0; }
+.ai-compare img { width: 100%; border-radius: 8px; display: block; }
+.ai-compare figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }

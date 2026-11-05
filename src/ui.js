@@ -11,6 +11,7 @@ export const ICONS = {
   mockups: I('<path d="M8 3l-5 3 2 5 2-1v11h10V10l2 1 2-5-5-3a4 4 0 01-8 0z"/>'),
   producao: I('<path d="M14 3H6a1 1 0 00-1 1v16a1 1 0 001 1h12a1 1 0 001-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>'),
   catalogo: I('<path d="M4 4h6a2 2 0 012 2v14a2 2 0 00-2-2H4zM20 4h-6a2 2 0 00-2 2v14a2 2 0 012-2h6z"/>'),
+  ia: I('<path d="M4 20l9-9"/><path d="M15 4l1 2.5L18.5 7.5 16 8.5 15 11l-1-2.5L11.5 7.5 14 6.5z"/><path d="M19 13l.6 1.4L21 15l-1.4.6L19 17l-.6-1.4L17 15l1.4-.6z"/>'),
   loja: I('<path d="M3 9l1.5-5h15L21 9"/><path d="M4 9v11h16V9"/><path d="M3 9h18"/><path d="M9 20v-6h6v6"/>'),
   config: I('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7 1.1V21a2 2 0 11-4 0v-.1a1.6 1.6 0 00-2.7-1.1l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00-1.1-2.7H3a2 2 0 110-4h.1a1.6 1.6 0 001.1-2.7l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 002.7-1.1V3a2 2 0 114 0v.1a1.6 1.6 0 002.7 1.1l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 001.1 2.7H21a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1.3z"/>'),
   plus: I('<path d="M12 5v14M5 12h14"/>'),
@@ -22,6 +23,7 @@ export const ICONS = {
 export const NAV = [
   { id: 'dashboard', label: 'Dashboard', href: '#/' },
   { id: 'criar', label: 'Criar Arte', href: '#/criar' },
+  { id: 'ia', label: 'Gerador IA', href: '#/ia' },
   { id: 'designs', label: 'Meus Designs', href: '#/designs' },
   { id: 'produtos', label: 'Produtos', href: '#/produtos' },
   { id: 'mockups', label: 'Mockups', href: '#/mockups' },

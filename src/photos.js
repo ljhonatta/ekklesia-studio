@@ -5,9 +5,9 @@
 import { db } from './db.js';
 import { canvasToBlob, dataURLToBlob } from './util.js';
 import { detectPose } from './pose.js';
-import { analyzeShirt } from './shirt.js';
+import { analyzeShirt, analyzeGarment } from './shirt.js';
 
-export const ANALYSIS_VERSION = 3;
+export const ANALYSIS_VERSION = 4;
 
 export const TIPOS_FOTO = ['Camiseta', 'Babylook', 'Polo', 'Manga longa', 'Moletom', 'Moletom com capuz', 'Regata', 'Short', 'Conjunto', 'Boné'];
 export const VISTAS_FOTO = [
@@ -137,6 +137,8 @@ function poseAreas(p, yawDeg) {
     return { id: d.id, label: d.label, mode: 'cyl', s, y, w, h, cmW: +(w / f.ppc).toFixed(1), cmH: +(h / f.ppc).toFixed(1), cx: c.x, cy: c.y, rot: f.roll / DEG, outline, hidden: vis < 0.15 };
   };
   const list = (back ? BACK : FRONT).map(make);
+  // costas/frente inteira, justa no tronco (sem mangas)
+  if (sh?.torso) list.splice(1, 0, torsoArea(p, sh, back, f.roll / DEG, f.ppc));
 
   // mangas (planas, ao longo do braço): 7×7 cm a ~7 cm do ombro
   const pts = p.pose.pts;
@@ -168,6 +170,20 @@ function poseAreas(p, yawDeg) {
   return list;
 }
 
+// Área que ocupa o tronco inteiro: da gola (folga para a gola) até perto da barra,
+// de lateral a lateral. A arte preenche (cover) e a máscara do tronco recorta.
+function torsoArea(p, sh, back, rot = 0, ppc = null) {
+  const t = sh.torso;
+  const W = (t.r - t.l) * p.w, top = t.t * p.h, bot = t.b * p.h, H = bot - top;
+  const padTop = ppc ? (back ? 3 : 5) * ppc : H * (back ? 0.06 : 0.1), padBot = ppc ? 3 * ppc : H * 0.05;
+  const w = W * 0.94, h = Math.max(H * 0.5, H - padTop - padBot);
+  return {
+    id: 'total', label: back ? 'Costas inteiras (justo)' : 'Frente inteira (justo)', mode: 'flat', cover: true,
+    cx: (t.l + t.r) / 2 * p.w, cy: top + padTop + h / 2, w, h, rot,
+    cmW: ppc ? +(w / ppc).toFixed(1) : undefined, cmH: ppc ? +(h / ppc).toFixed(1) : undefined,
+  };
+}
+
 // Sem corpo detectado (ex.: close): áreas planas a partir do enquadramento.
 const DEFAULT_AREA = {
   frente: { cx: 0.51, cy: 0.43, w: 0.3, h: 0.22 },
@@ -176,7 +192,10 @@ const DEFAULT_AREA = {
   detalhe: { cx: 0.5, cy: 0.6, w: 0.45, h: 0.3 },
 };
 function fallbackAreas(p) {
-  const a = DEFAULT_AREA[p.vista] || DEFAULT_AREA.frente;
+  const sh = p.shirt?.ok && p.shirt.torso ? p.shirt : null;
+  const t = sh?.torso;
+  // peça sem pessoa: as áreas saem do contorno do tronco
+  const a = t ? { cx: (t.l + t.r) / 2, cy: t.t + (t.b - t.t) * (isBack(p) ? 0.42 : 0.38), w: (t.r - t.l) * 0.62, h: (t.b - t.t) * 0.42 } : DEFAULT_AREA[p.vista] || DEFAULT_AREA.frente;
   const cx = a.cx * p.w, cy = a.cy * p.h, w = a.w * p.w, h = a.h * p.h;
   const flat = (id, label, x, y, ww, hh) => ({ id, label, mode: 'flat', cx: x, cy: y, w: ww, h: hh, rot: 0 });
   const list = isBack(p)
@@ -190,6 +209,7 @@ function fallbackAreas(p) {
         flat('peito-direito', 'Peito direito', cx - w * 0.27, cy - h * 0.3, s, s),
       ];
     })();
+  if (sh) list.splice(1, 0, torsoArea(p, sh, isBack(p)));
   list.frame = null;
   return list;
 }
@@ -274,7 +294,7 @@ export async function detectPhoto(photo) {
   const img = await loadImg(photo.image);
   try {
     const pose = await detectPose(img);
-    const shirt = pose.ok ? await analyzeShirt(img, pose, { longSleeve: LONG.test(photo.tipo || '') }) : { ok: false };
+    const shirt = pose.ok ? await analyzeShirt(img, pose, { longSleeve: LONG.test(photo.tipo || '') }) : await analyzeGarment(img);
     const patch = { pose, shirt, analysis: ANALYSIS_VERSION };
     // frente/costas pela IA corrige a classificação manual
     if (pose.ok && pose.facing === 'back' && photo.vista !== 'costas') patch.vista = 'costas';
@@ -366,7 +386,7 @@ function warpByFabric(actx, shade, region, scale, strength) {
 // Arte já no tamanho, girada e (opcionalmente) recolorida, em resolução `scale`.
 function prerender(img, layer, area, scale) {
   const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-  const fit = Math.min(area.w / iw, area.h / ih) * layer.scale;
+  const fit = (area.cover ? Math.max(area.w / iw, area.h / ih) : Math.min(area.w / iw, area.h / ih)) * layer.scale;
   const aw = iw * fit, ah = ih * fit;
   const r = (layer.rot || 0) * DEG;
   const bw = Math.abs(aw * Math.cos(r)) + Math.abs(ah * Math.sin(r));
@@ -457,10 +477,22 @@ export function renderPhotoMockup(ctx, opts, { scale = 1, guides = false, fast =
       warpByFabric(actx, shade, { x: (center.x - r) * scale, y: (center.y - r) * scale, w: 2 * r * scale, h: 2 * r * scale }, scale, warp);
     }
     // só onde tem roupa
-    if (layer.clip !== false && opts.mask) {
+    // frente/costas: só o tronco (não vaza para as mangas); mangas: a peça toda
+    const clipMask = area.id.startsWith('manga') ? opts.mask : opts.torsoMask || opts.mask;
+    if (layer.clip !== false && clipMask) {
       actx.globalCompositeOperation = 'destination-in';
       actx.imageSmoothingEnabled = true;
-      actx.drawImage(opts.mask, 0, 0, art.width, art.height);
+      actx.drawImage(clipMask, 0, 0, art.width, art.height);
+      actx.globalCompositeOperation = 'source-over';
+    }
+    // área inteira: recorta também no retângulo da área (bordas retas na gola e na barra)
+    if (area.cover) {
+      actx.globalCompositeOperation = 'destination-in';
+      actx.setTransform(scale, 0, 0, scale, 0, 0);
+      actx.translate(area.cx, area.cy);
+      actx.rotate((area.rot || 0) * DEG);
+      actx.fillRect(-area.w / 2, -area.h / 2, area.w, area.h);
+      actx.setTransform(1, 0, 0, 1, 0, 0);
       actx.globalCompositeOperation = 'source-over';
     }
     const fabric = layer.fabric ?? 0.6;

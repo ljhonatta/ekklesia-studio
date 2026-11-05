@@ -26,6 +26,12 @@ e coloque em `USERS`. Trocar o hash derruba as sessões abertas.
 ## Nuvem (sincronização)
 `src/sync.js` sincroniza todas as tabelas com o repositório **privado** `ljhonatta/ekklesia-studio-dados`: `db/<tabela>/<chave>.json` e `blobs/<git-sha>` para as imagens. O merge é de 3 vias contra a base salva em localStorage (`ekk-sync`); quando os dois lados mudam, vence o `updatedAt` mais recente. Hooks do Dexie geram ids únicos entre aparelhos (`Date.now()*1000+rand`) e carimbam `updatedAt` em toda alteração. `lojaToken` e `lojaUltima` não sincronizam.
 
+## IA (OpenAI)
+`src/openai.js` chama a API direto do navegador com a chave do usuário (setting `openaiKey`: fora da nuvem e do backup). Modelos escolhidos em Configurações a partir de `/v1/models`. Gerador em `#/ia`; botão "Deixar realista com IA" no editor de mockup (salva como mockup novo com `ai: true`).
+
+## Encaixe da estampa
+`shirt.js` gera `torsoMask` (peça sem as mangas) e `torso` (caixa); fotos sem pessoa usam `analyzeGarment` (recorte pelo fundo). Área `total` = frente/costas inteira, arte em cover. Frente/costas recortam pela `torsoMask`; mangas pela máscara inteira.
+
 ## Web app
 `manifest.webmanifest` + `sw.js` (rede primeiro, cache como reserva offline). Os ícones ficam em `assets/icons/` e a logo padrão em `assets/logo.png`.
 

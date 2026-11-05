@@ -105,7 +105,7 @@ export async function exportBackup() {
   const out = { app: 'ekklesia-studio', schema: 1, exportedAt: new Date().toISOString(), tables: {} };
   for (const t of TABLES) {
     let rows = await db.table(t).toArray();
-    if (t === 'settings') rows = rows.filter((r) => r.key !== 'lojaToken'); // segredo não vai para backup
+    if (t === 'settings') rows = rows.filter((r) => r.key !== 'lojaToken' && r.key !== 'openaiKey'); // segredos não vão para backup
     out.tables[t] = await Promise.all(rows.map(encode));
   }
   return new Blob([JSON.stringify(out)], { type: 'application/json' });

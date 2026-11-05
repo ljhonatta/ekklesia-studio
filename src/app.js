@@ -17,12 +17,14 @@ import * as production from './modules/production.js';
 import * as products from './modules/products.js';
 import * as catalog from './modules/catalog.js';
 import * as store from './modules/store.js';
+import * as aiGen from './modules/ai-generator.js';
 
 const r = (fn) => ({ render: fn });
 
 const ROUTES = [
   [/^$/, dashboard, 'dashboard'],
   [/^criar$/, create, 'criar'],
+  [/^ia$/, aiGen, 'ia'],
   [/^designs$/, designs, 'designs'],
   [/^design\/(\d+)$/, designDetail, 'designs'],
   [/^mockups$/, mockups, 'mockups'],

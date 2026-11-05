@@ -34,6 +34,17 @@ export async function render(el) {
       <p class="sync-line" id="syncLine"></p>
       <p class="hint" id="deviceInv"></p>
     </section>
+    <section class="panel ia-panel">
+      <h3>Inteligência artificial (OpenAI)</h3>
+      <p class="hint">Liga o <b>Gerador IA</b> (GPT Image) e o botão <b>Deixar realista com IA</b> dos mockups. A chave fica só neste aparelho: não vai para a nuvem, para o backup nem para a loja. Em cada aparelho, cole de novo.</p>
+      <label class="field"><span>Chave da API da OpenAI</span><span class="secret"><input type="password" id="aiKey" autocomplete="off" placeholder="sk-..."><button type="button" class="btn ghost sm" id="aiShow">Mostrar</button></span></label>
+      <div class="form-grid two">
+        <label class="field"><span>Modelo de imagem</span><select id="aiImg"></select></label>
+        <label class="field"><span>Modelo de texto (melhorar ideias)</span><select id="aiTxt"></select></label>
+      </div>
+      <div class="actions-row"><button type="button" class="btn primary" id="aiConnect">Salvar e testar</button><a class="link" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">Criar chave na OpenAI</a></div>
+      <p class="hint" id="aiLine"></p>
+    </section>
     <section class="panel logo-panel">
       <div class="section-head"><h3>Logo oficial</h3>
         <div class="actions-row tight">
@@ -107,6 +118,35 @@ export async function render(el) {
     drawLogo();
   });
   drawLogo();
+
+  // ---- IA ----
+  {
+    const { getKey, getIA, saveIA, connect } = await import('../openai.js');
+    const ia = await getIA();
+    $('#aiKey', el).value = await getKey();
+    const fill = (sel, list, cur) => { $(sel, el).innerHTML = (list?.length ? list : cur ? [cur] : []).map((m) => `<option ${m === cur ? 'selected' : ''}>${esc(m)}</option>`).join('') || '<option value="">— teste a chave —</option>'; };
+    fill('#aiImg', ia.images, ia.imageModel); fill('#aiTxt', ia.texts, ia.textModel);
+    $('#aiLine', el).textContent = ia.imageModel ? `Conectado: imagens com ${ia.imageModel}, textos com ${ia.textModel || '—'}.` : 'Sem chave: o Gerador IA fica desligado.';
+    $('#aiShow', el).addEventListener('click', (e) => { const i = $('#aiKey', el); i.type = i.type === 'password' ? 'text' : 'password'; e.currentTarget.textContent = i.type === 'password' ? 'Mostrar' : 'Ocultar'; });
+    for (const [sel, k] of [['#aiImg', 'imageModel'], ['#aiTxt', 'textModel']]) $(sel, el).addEventListener('change', (e) => saveIA({ [k]: e.target.value }));
+    $('#aiConnect', el).addEventListener('click', async (e) => {
+      const b = e.currentTarget;
+      const key = $('#aiKey', el).value.replace(/\s+/g, '');
+      $('#aiKey', el).value = key;
+      await setSetting('openaiKey', key);
+      if (!key) { $('#aiLine', el).textContent = 'Chave removida deste aparelho.'; return; }
+      if (!/^sk-/.test(key)) toast('Essa chave não parece da OpenAI (começa com sk-).', 'err');
+      b.disabled = true;
+      $('#aiLine', el).textContent = 'Testando…';
+      try {
+        const r = await connect();
+        fill('#aiImg', r.images, r.imageModel); fill('#aiTxt', r.texts, r.textModel);
+        $('#aiLine', el).textContent = r.imageModel ? `Conectado: imagens com ${r.imageModel}, textos com ${r.textModel || '—'}.` : 'Chave ok, mas a conta não tem nenhum modelo GPT Image liberado.';
+        toast('OpenAI conectada.');
+      } catch (err) { $('#aiLine', el).textContent = err.message; toast(err.message, 'err'); }
+      b.disabled = false;
+    });
+  }
 
   // ---- nuvem ----
   const { db } = await import('../db.js');
