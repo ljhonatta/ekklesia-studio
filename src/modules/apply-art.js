@@ -105,15 +105,15 @@ export async function applyArtFlow(base) {
  * Retorna o id do produto.
  */
 export async function createProductWithArt(base, opts, onProgress = () => {}) {
-  const photos = (await photosOf(base.peca)).filter((p) => opts.cores.includes(p.cor) && (isBack(p) ? opts.back : opts.front));
-  if (!photos.length) throw new Error('Nenhuma foto com arte para gerar.');
+  const photos = opts.semOutras ? [] : (await photosOf(base.peca)).filter((p) => opts.cores.includes(p.cor) && (isBack(p) ? opts.back : opts.front) && p.id !== opts.excludePhoto);
+  if (!photos.length && !opts.leadMockups?.length) throw new Error('Nenhuma foto com arte para gerar.');
   const vBack = opts.back ? await db.versions.get((await db.designs.get(opts.back)).currentVersionId) : null;
   const vFront = opts.front ? await db.versions.get((await db.designs.get(opts.front)).currentVersionId) : null;
   // lado da arte principal primeiro (capa), cor por cor
   const side = (p) => (isBack(p) === !!opts.back ? 0 : 1);
   photos.sort((a, b) => side(a) - side(b) || opts.cores.indexOf(a.cor) - opts.cores.indexOf(b.cor));
   const cache = new Map();
-  const mockupIds = [];
+  const mockupIds = [...(opts.leadMockups || [])];
   let i = 0;
   for (const photo of photos) {
     onProgress(`${++i}/${photos.length} · ${photo.cor} (${isBack(photo) ? 'costas' : 'frente'})`);
@@ -125,7 +125,7 @@ export async function createProductWithArt(base, opts, onProgress = () => {}) {
     const pImg = await loadImage(photo.image);
     const mask = photo.shirt?.ok ? await loadImage(photo.shirt.mask) : null;
     const torsoMask = photo.shirt?.torsoMask ? await loadImage(photo.shirt.torsoMask) : null;
-    const scale = area === 'total' ? 0.98 : area === 'principal' ? 1.15 : 1;
+    const scale = (back ? opts.scaleBack : opts.scaleFront) ?? (area === 'total' ? 0.98 : area === 'principal' ? 1.15 : 1);
     const layer = { area, x: 0, y: 0, scale, rot: 0, opacity: 1, blend: 'normal', fabric: 0.6, warp: 0.5, tint: null, clip: true, yaw: null };
     const c = document.createElement('canvas');
     c.width = photo.w; c.height = photo.h;
@@ -163,7 +163,7 @@ const POSICOES = [
   ['frente:peito-esquerdo', 'Peito esquerdo (logo)'], ['frente:peito-central', 'Peito central'], ['frente:principal', 'Frente grande (A3)'], ['frente:total', 'Frente inteira (justo)'],
 ];
 const NOME_PECA = { 'oversize-masc': 'Oversized', 'oversize-fem': 'Oversized Feminina', 'tech-fem': 'Tech Feminina' };
-const titulo = (s) => s.toLowerCase().replace(/(^|[\s·\-(])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
+export const titulo = (s) => s.toLowerCase().replace(/(^|[\s·\-(])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
 
 /** "Lançar como produto" a partir de uma arte: um produto por modelo marcado. Retorna os ids. */
 export async function launchFlow(designId, onProgress = () => {}) {
@@ -217,4 +217,16 @@ export async function launchFlow(designId, onProgress = () => {}) {
     ids.push(await createProductWithArt(base, { ...opts, cores, auto: o.auto, nome, ativo: o.ativo }, (msg) => onProgress(`${NOME_PECA[base.peca]}: ${msg}`)));
   }
   return ids;
+}
+
+// Modelo da foto: o cadastrado (peca) ou deduzido de masculino/feminino + modelagem.
+export const pecaDaFoto = (p) => p?.peca || (p?.modelo === 'feminino' || p?.tipo === 'Babylook' ? ((p.modelagem || p.shirt?.fit) === 'oversized' ? 'oversize-fem' : 'tech-fem') : 'oversize-masc');
+
+// Produto de referência para "duplicar": o modelo base daquela peça; senão o
+// produto mais recente da mesma categoria; senão a Oversized lisa do fornecedor.
+export async function referenciaPara(peca) {
+  const all = await db.products.toArray();
+  return all.find((p) => p.base && p.peca === peca)
+    || all.filter((p) => !p.base && p.categoria === (peca === 'tech-fem' ? 'Camiseta feminina' : 'Oversized')).sort((a, b) => b.updatedAt - a.updatedAt)[0]
+    || all.find((p) => p.sku === 'BASE-29') || null;
 }

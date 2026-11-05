@@ -2,7 +2,7 @@ import { db, artBlob, currentVersions } from '../db.js';
 import { $, $$, esc, objURL, loadImage, toast, modal, download, slugify, canvasToBlob } from '../util.js';
 import { GARMENTS, VIEWS, COLORS, garmentById, areasFor, defaultArea, W as VW, H as VH } from '../garments.js';
 import { renderMockup, BACKGROUNDS } from '../compose.js';
-import { renderPhotoMockup, photoAreas, photoLabel, detectPhoto, needsAnalysis, estimateYaw, dragDelta, TIPOS_FOTO, VISTAS_FOTO } from '../photos.js';
+import { renderPhotoMockup, photoAreas, photoLabel, detectPhoto, needsAnalysis, estimateYaw, dragDelta, isBack as isBackPhoto, TIPOS_FOTO, VISTAS_FOTO } from '../photos.js';
 import { ICONS } from '../ui.js';
 
 const newLayer = (area) => ({ area, x: 0, y: 0, scale: 1, rot: 0, opacity: 1, blend: 'normal', fabric: 0.6, warp: 0.5, tint: null, clip: true, yaw: null });
@@ -158,6 +158,7 @@ export async function render(el, [param], query) {
             <button class="btn primary" id="save">${rec ? 'Salvar' : 'Salvar mockup'}</button>
             <button class="btn" id="saveNew" ${rec ? '' : 'hidden'}>Salvar como novo</button>
           </div>
+          <button class="btn primary block photo-only" id="launchProd">Lançar como produto</button>
           <button class="btn block photo-only" id="aiReal" title="Envia a montagem para o GPT Image e devolve com cara de foto real">✦ Deixar realista com IA</button>
           <div class="ed-row">
             <button class="btn" data-export="image/png">${ICONS.download}<span>PNG</span></button>
@@ -512,6 +513,47 @@ export async function render(el, [param], query) {
       toast('Não foi possível salvar o mockup.', 'err');
     } finally { btn.disabled = false; }
   }
+
+  // ---------- lançar produto a partir deste mockup ----------
+  $('#launchProd', el).addEventListener('click', async (e) => {
+    const b = e.currentTarget;
+    if (!img || !photo) { toast('Escolha a arte e a foto primeiro.', 'err'); return; }
+    const { pecaDaFoto, referenciaPara, createProductWithArt, photosOf, PECAS, titulo } = await import('./apply-art.js');
+    const peca = pecaDaFoto(photo);
+    const ref = await referenciaPara(peca);
+    if (!ref) { toast('Nenhum produto de referência ainda: sincronize a nuvem.', 'err'); return; }
+    const back = isBackPhoto(photo);
+    const outras = (await photosOf(peca)).filter((p) => p.id !== photo.id && isBackPhoto(p) === back);
+    const preco = ref.precoLancamento ? `R$ ${String(ref.precoLancamento).replace('.', ',')} no lançamento · R$ ${String(ref.preco).replace('.', ',')}` : `R$ ${String(ref.preco || '').replace('.', ',')}`;
+    let read = null;
+    const ok = await modal({
+      title: 'Lançar como produto',
+      body: `<p>Modelo detectado: <b>${esc(PECAS[peca] || peca)}</b> · ${esc(photo.cor || '')} (${back ? 'costas' : 'frente'}).</p>
+        <p>Ficha copiada de: <b>${esc(ref.nome)}</b> (${preco}). Depois você ajusta o que quiser.</p>
+        <label class="field"><span>Nome do produto</span><input id="lpNome" value="${esc(`${(PECAS[peca] || 'Oversized').split(' ')[0]} ${titulo(design?.name || '')}`.trim())}"></label>
+        ${outras.length ? `<label class="toggle"><input type="checkbox" id="lpOutras" checked><span>Estampar igual nas outras ${outras.length} foto(s) de ${back ? 'costas' : 'frente'} deste modelo (${[...new Set(outras.map((p) => p.cor))].join(', ')})</span></label>` : ''}
+        <label class="toggle small"><input type="checkbox" id="lpAtivo"><span>Já colocar à venda no site (Ativo)</span></label>`,
+      actions: [{ label: 'Cancelar', value: false }, { label: 'Lançar e abrir a ficha', value: true, kind: 'primary' }],
+      onOpen: (m) => { read = () => ({ nome: $('#lpNome', m).value.trim(), outras: $('#lpOutras', m)?.checked, ativo: $('#lpAtivo', m).checked }); },
+    });
+    if (!ok) return;
+    const o = read();
+    b.disabled = true;
+    const old = b.textContent;
+    try {
+      b.textContent = 'Salvando este mockup…';
+      if (!rec || rec.ai) await save($('#save', el), !!rec?.ai); else await save($('#save', el));
+      const cores = o.outras ? [...new Set([photo.cor, ...outras.map((p) => p.cor)])] : [photo.cor];
+      const opts = back
+        ? { back: st.designId, pBack: st.layer.area, scaleBack: st.layer.scale }
+        : { front: st.designId, pFront: st.layer.area, scaleFront: st.layer.scale };
+      const id = await createProductWithArt(ref.base ? ref : { ...ref, peca }, {
+        ...opts, cores, semOutras: !o.outras, auto: true, nome: o.nome, ativo: o.ativo, leadMockups: [rec.id], excludePhoto: photo.id,
+      }, (m) => { b.textContent = `Estampando ${m}…`; });
+      toast('Produto criado: confira a ficha.');
+      location.hash = `#/produto/${id}/editar`;
+    } catch (err) { console.error(err); toast(err.message, 'err'); b.disabled = false; b.textContent = old; }
+  });
 
   // ---------- IA: deixa a montagem com cara de foto real ----------
   $('#aiReal', el).addEventListener('click', async (e) => {

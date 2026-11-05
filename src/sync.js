@@ -50,11 +50,25 @@ export function schedule(ms = 4000) {
 }
 
 // ---------- GitHub ----------
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// Falha passageira (rede caiu, GitHub lento/5xx): tenta de novo antes de desistir.
 async function gh(token, path, opts = {}) {
-  const r = await fetch(`https://api.github.com${path}`, {
-    ...opts,
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(opts.body ? { 'Content-Type': 'application/json' } : {}) },
-  });
+  for (let attempt = 0; ; attempt++) {
+    try { return await ghOnce(token, path, opts); } catch (e) {
+      const passageira = !e.status || e.status >= 500 || e.status === 429;
+      if (!passageira || attempt >= 3) throw e;
+      await wait(1000 * 2 ** attempt);
+    }
+  }
+}
+async function ghOnce(token, path, opts = {}) {
+  let r;
+  try {
+    r = await fetch(`https://api.github.com${path}`, {
+      ...opts,
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(opts.body ? { 'Content-Type': 'application/json' } : {}) },
+    });
+  } catch { throw new Error('Sem conexão com o GitHub agora.'); }
   if (!r.ok) {
     const msg = (await r.json().catch(() => ({}))).message || r.statusText;
     const e = new Error(r.status === 401 ? 'Token do GitHub inválido ou expirado.' : r.status === 404 || r.status === 403 ? `Sem acesso ao repositório de dados (${msg}).` : `GitHub: ${msg}`);
@@ -149,7 +163,7 @@ async function localSnapshot() {
 }
 
 // ---------- sincronização ----------
-let running = null, runningToken = null;
+let running = null, runningToken = null, failures = 0;
 export async function syncNow({ onProgress } = {}) {
   const current = await getSetting('lojaToken', '');
   if (running && runningToken === current) return running;
@@ -162,13 +176,17 @@ export async function syncNow({ onProgress } = {}) {
     setStatus({ state: 'running', msg: 'Sincronizando…' });
     const prog = (m) => { onProgress?.(m); setStatus({ msg: m }); };
     try {
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < 6; attempt++) {
         const r = await syncOnce(token, prog);
-        if (!r.retry) { setStatus({ state: 'ok', at: Date.now(), msg: '' }); return r; }
+        if (!r.retry) { failures = 0; setStatus({ state: 'ok', at: Date.now(), msg: '' }); return r; }
+        await wait(800 + Math.random() * 1500 * (attempt + 1)); // outro aparelho/aba gravou junto: espera e refaz
       }
-      throw new Error('Outro aparelho está sincronizando ao mesmo tempo. Tente de novo em instantes.');
+      throw new Error('Outro aparelho está sincronizando ao mesmo tempo. Tentando de novo sozinho…');
     } catch (e) {
-      setStatus({ state: 'error', msg: e.message });
+      // tenta de novo sozinho (30 s, 1 min, 2 min…); o aviso de erro só fica se insistir
+      failures++;
+      setTimeout(() => syncNow().catch(() => {}), Math.min(300000, 30000 * 2 ** (failures - 1)));
+      setStatus({ state: failures > 2 ? 'error' : 'running', msg: failures > 2 ? e.message : 'Nuvem instável, tentando de novo…' });
       throw e;
     }
   })().finally(() => { running = null; });
@@ -237,6 +255,18 @@ async function syncOnce(token, prog) {
       prog(`Baixando imagens ${++n} de ${need.size}…`);
       got.set(sha, fromB64((await gh(token, `${R}/git/blobs/${sha}`)).content));
     });
+    // dois aparelhos criaram produtos com o mesmo endereço: o daqui ganha "-2" (sobe na próxima)
+    const fixSlugs = [];
+    for (const x of pulled) {
+      if (parsePath(x.path).table !== 'products' || !x.row.slug) continue;
+      const clash = await db.products.where('slug').equals(x.row.slug).first();
+      if (clash && clash.id !== x.row.id) {
+        let n = 2, slug;
+        do slug = `${x.row.slug}-${n++}`; while (await db.products.where('slug').equals(slug).first() || pulled.some((y) => y.row.slug === slug));
+        fixSlugs.push([clash.id, slug, clash.linkCompra?.includes('/#/produto/') ? clash.linkCompra.replace(/[^/]+$/, encodeURIComponent(slug)) : clash.linkCompra]);
+      }
+    }
+    for (const [id, slug, linkCompra] of fixSlugs) await db.products.update(id, { slug, linkCompra });
     applyingRemote = true;
     try {
       await db.transaction('rw', SYNC_TABLES.map((t) => db.table(t)), async () => {
@@ -279,7 +309,7 @@ async function syncOnce(token, prog) {
       try {
         await gh(token, `${R}/git/refs/heads/${branch}`, { method: 'PATCH', body: JSON.stringify({ sha: c.sha }) });
       } catch (e) {
-        if (e.status === 422) return { retry: true }; // outro aparelho gravou antes: recomeça
+        if (e.status === 422 || e.status === 409 || !e.status || e.status >= 500) return { retry: true }; // outro aparelho gravou antes / falha passageira: recomeça
         throw e;
       }
       for (const e of entries) if (e.path.startsWith('db/')) { if (e.sha) newBase[e.path] = e.sha; else delete newBase[e.path]; }
