@@ -83,7 +83,7 @@ const CRC_TABLE = (() => {
 })();
 const crc32 = (bytes) => { let c = 0xffffffff; for (const b of bytes) c = CRC_TABLE[(c ^ b) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
 
-async function withDpi(blob, dpi) {
+export async function withDpi(blob, dpi) {
   const src = new Uint8Array(await blob.arrayBuffer());
   const ppm = Math.round(dpi / 0.0254);
   const chunk = new Uint8Array(21);

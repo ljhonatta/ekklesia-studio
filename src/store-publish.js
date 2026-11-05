@@ -2,7 +2,7 @@
 // tudo num único commit no repositório da loja (GitHub Pages), via API.
 // Só envia arquivos que mudaram (compara o hash git de cada arquivo).
 import { db, getSetting, setSetting } from './db.js';
-import { productImages, toJpegDataURL } from './products.js';
+import { productImages, toJpegDataURL, watermarkImage } from './products.js';
 import { getLogo, tinted } from './brand.js';
 import { tecLabel, siteURL, instagramURL, whatsappURL, DEFAULT_BRAND } from './data.js';
 import { toast, canvasToBlob } from './util.js';
@@ -16,6 +16,7 @@ export const DEFAULT_LOJA = {
   faixa: 'PROMOÇÃO DE LANÇAMENTO NAS 50 PRIMEIRAS PEÇAS ✦ GARANTA COM 50% DE ENTRADA NO PIX OU PAGUE O TOTAL ✦ MODA COM PROPÓSITO',
   manifesto: 'EKKLESIA não é só uma loja. É um movimento. Cada peça que você veste é uma declaração: você não compra roupa, você veste um propósito.',
   prazoProducao: '',
+  marcaDagua: 'ekk', // 'ekk' | 'ekl' | 'logo' | '' (sem)
 };
 
 export async function getLoja() {
@@ -75,6 +76,7 @@ export async function buildStore(onProgress) {
   const brand = { ...DEFAULT_BRAND, ...(await getSetting('brand', {})) };
   const products = (await db.products.toArray()).filter((p) => p.status === 'ativo' && p.preco);
   const files = new Map(); // path -> Uint8Array
+  const marca = loja.marcaDagua ? await watermarkImage(loja.marcaDagua).catch(() => null) : null;
   const items = [];
   let i = 0;
   for (const p of products) {
@@ -82,7 +84,7 @@ export async function buildStore(onProgress) {
     const imgs = (await productImages(p)).slice(0, 5);
     const paths = [];
     for (let k = 0; k < imgs.length; k++) {
-      const im = await toJpegDataURL(imgs[k].blob, { bg: '#e9e6e0', max: 1400, pad: imgs[k].kind === 'art' ? 160 : 0 });
+      const im = await toJpegDataURL(imgs[k].blob, { bg: '#e9e6e0', max: 1400, pad: imgs[k].kind === 'art' ? 160 : 0, marca });
       const path = `img/p/${p.slug}-${k + 1}.jpg`;
       files.set(path, dataURLBytes(im.url));
       paths.push(path);

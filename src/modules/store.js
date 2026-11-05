@@ -19,6 +19,7 @@ const FIELDS = [
     { k: 'lancLimite', label: 'Válido para as primeiras (unidades)', ph: '50', num: true },
     { k: 'freteGratisAcima', label: 'Frete grátis acima de (R$)', ph: '299', num: true },
     { k: 'prazoProducao', label: 'Prazo de produção (aparece na loja)', ph: 'Ex.: até 20 dias úteis após a entrada' },
+    { k: 'marcaDagua', label: 'Marca d’água nas fotos da loja', options: [['ekk', 'EKK com espada'], ['ekl', 'EKL com espada'], ['logo', 'Logo oficial'], ['', 'Sem marca d’água']] },
   ]],
   ['Capa da loja', [
     { k: 'heroTitulo', label: 'Título', ph: 'Vista o que você crê' },
@@ -39,7 +40,9 @@ export async function render(el) {
   const lancPreco = (p) => (p.lancamento && (+p.lancVendidos || 0) < +(p.lancLimite ?? loja.lancLimite) ? (p.precoLancamento || Math.round(p.preco * (1 - +(p.lancDesconto ?? loja.lancDesconto) / 100) * 100) / 100) : p.preco);
   const pixProds = (await db.products.toArray()).filter((p) => p.preco && !p.base).sort((a, b) => (b.status === 'ativo') - (a.status === 'ativo') || a.nome.localeCompare(b.nome)).map((p) => ({ ...p, vale: lancPreco(p) }));
 
-  const field = (f) => `<label class="field"><span>${f.label}${f.req ? ' *' : ''}</span>${f.area
+  const field = (f) => `<label class="field"><span>${f.label}${f.req ? ' *' : ''}</span>${f.options
+    ? `<select name="${f.k}">${f.options.map(([v, l]) => `<option value="${v}" ${String(loja[f.k] ?? '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`
+    : f.area
     ? `<textarea name="${f.k}" rows="3" placeholder="${esc(f.ph)}">${esc(loja[f.k] ?? '')}</textarea>`
     : `<input name="${f.k}" value="${esc(loja[f.k] ?? '')}" placeholder="${esc(f.ph)}" ${f.num ? 'inputmode="numeric"' : ''}>`}</label>`;
 

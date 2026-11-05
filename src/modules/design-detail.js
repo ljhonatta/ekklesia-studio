@@ -1,7 +1,8 @@
 import { db, STATUS, artBlob, addVersion, setCurrentVersion, deleteDesign } from '../db.js';
 import { $, esc, objURL, fmtBytes, fmtDateTime, prepareArtFile, toast, confirmDialog, download, slugify, loadImage, modal, canvasToBlob, ACCEPT_ATTR } from '../util.js';
 import { imageToCanvas, detectBackground, removeBackground } from '../bgremove.js';
-import { mockupCard, ICONS, empty } from '../ui.js';
+import { mockupCard, ICONS, empty, pickDesign } from '../ui.js';
+import { buildPack, zip, analyzeArt } from '../production-pack.js';
 
 const ORIGIN = { upload: 'Upload', 'ia-svg': 'IA · SVG', 'ia-imagem': 'IA · imagem', edit: 'Edição' };
 const PRINT_CM = 28; // largura típica de uma estampa grande
@@ -50,6 +51,8 @@ export async function render(el, [idStr]) {
           <div id="prod"></div>
           <p class="hint">Isto é a <b>arte</b>. O arquivo técnico para a gráfica fica separado, em Arquivos de Produção.</p>
           ${pfs.length ? `<ul class="plain">${pfs.map((f) => `<li><a class="link" href="#/producao/${f.id}">${esc(f.name)} · ${f.widthCm}×${f.heightCm} cm</a></li>`).join('')}</ul>` : ''}
+          <button class="btn primary block" id="pack">${ICONS.download}<span>Pacote de produção (DTF, serigrafia, bordado, fotolito)</span></button>
+          <p class="hint">Gera um .zip no padrão da marca: oversize 34 cm e padrão 26 cm, tinta preta e off-white, bordado 14/10 cm e um fotolito por cor. 300 DPI, fundo transparente.</p>
           <div class="actions-row"><a class="btn sm" id="mkProd" href="#">Criar arquivo de produção</a><a class="btn sm ghost" href="#/produto/new?design=${id}">Cadastrar produto</a></div>
         </div>
       </aside>
@@ -95,6 +98,7 @@ export async function render(el, [idStr]) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.view) { viewing = +b.dataset.view; draw(); }
+    else if (b.id === 'pack') packFlow(current(), b);
     else if (b.dataset.current) {
       await setCurrentVersion(id, +b.dataset.current);
       design = await db.designs.get(id);
@@ -237,3 +241,38 @@ export async function render(el, [idStr]) {
   draw();
 }
 
+
+// Pacote de produção: escolhe (opcional) uma arte só para o bordado e gera o .zip.
+async function packFlow(v, btn) {
+  const design = await db.designs.get(v.designId);
+  const info = await analyzeArt(artBlob(v));
+  let bordado = null;
+  const go = await modal({
+    title: 'Pacote de produção',
+    body: `<p>Arte: <b>${esc(design.name)}</b> (V${v.n}) · fundo ${info.background} · tinta principal ${info.inkDark ? 'escura' : 'clara'}${info.accents.length ? ` · destaques: ${info.accents.map((a) => esc(a.name)).join(', ')}` : ''}.</p>
+      ${info.colorida ? '<p class="banner warn">Arte colorida: vai só o DTF (serigrafia e fotolito precisam de poucas cores).</p>' : ''}
+      <p>Bordado: usa a arte inteira. Se o bordado for uma versão menor (ex.: só o título), escolha a arte dele:</p>
+      <div class="actions-row"><button type="button" class="btn sm" id="pickB">Escolher arte do bordado</button><span class="muted" id="bName">arte inteira</span></div>`,
+    actions: [{ label: 'Cancelar', value: false }, { label: 'Gerar .zip', value: true, kind: 'primary' }],
+    onOpen: (m) => m.querySelector('#pickB').addEventListener('click', async () => {
+      const bid = await pickDesign('Arte do bordado');
+      if (!bid) return;
+      const bd = await db.designs.get(bid);
+      bordado = await db.versions.get(bd.currentVersionId);
+      m.querySelector('#bName').textContent = bd.name;
+    }),
+  });
+  if (!go) return;
+  btn.disabled = true;
+  const label = btn.querySelector('span');
+  const old = label.textContent;
+  try {
+    const { files } = await buildPack({ name: design.name, art: artBlob(v), bordadoArt: bordado ? artBlob(bordado) : null, onProgress: (m) => { label.textContent = `Gerando ${m}…`; } });
+    label.textContent = 'Compactando…';
+    const root = design.name.toUpperCase().replace(/[\\/:*?"<>|]+/g, '').trim() || 'ARTE';
+    download(await zip(files, root), `${slugify(design.name)}-producao.zip`);
+    toast(`Pacote pronto: ${files.length - 1} arquivos.`);
+  } catch (err) { console.error(err); toast(`Não foi possível gerar: ${err.message}`, 'err'); }
+  btn.disabled = false;
+  label.textContent = old;
+}
