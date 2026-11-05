@@ -63,6 +63,7 @@ export async function render(el) {
         <figure class="ai-card ${r.transparent ? 'checker' : ''}"><img src="${objURL(r.blob)}" alt="">
           <figcaption>
             <button class="btn sm primary" data-save="${i}" ${r.designId ? 'disabled' : ''}>${r.designId ? 'Salvo' : 'Salvar em Meus Designs'}</button>
+            <button class="btn sm" data-launch="${i}">Lançar como produto</button>
             <button class="btn sm" data-mock="${i}">Fazer mockup</button>
             <button class="btn sm ghost" data-ref="${i}">Usar como referência</button>
             <button class="btn sm ghost" data-dl="${i}">Baixar</button>
@@ -140,6 +141,12 @@ export async function render(el) {
     else if (b.dataset.save) {
       b.disabled = true;
       try { await saveResult(+b.dataset.save); toast('Salvo em Meus Designs.'); drawResults(); } catch (err) { toast(err.message, 'err'); b.disabled = false; }
+    }
+    else if (b.dataset.launch) {
+      const id = await saveResult(+b.dataset.launch);
+      drawResults();
+      location.hash = `#/design/${id}`;
+      setTimeout(() => document.querySelector('#launch')?.click(), 700);
     }
     else if (b.dataset.mock) { const id = await saveResult(+b.dataset.mock); location.hash = `#/mockup/new?design=${id}`; }
     else if (b.dataset.ref) { S.refs.push(S.results[+b.dataset.ref].blob); S.refs = S.refs.slice(0, 10); drawRefs(); toast('Adicionada às referências.'); }

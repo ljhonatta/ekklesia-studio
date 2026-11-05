@@ -39,9 +39,20 @@ export function colorName(rgb) {
  */
 // Tronco sem mangas: em cada linha fica só o trecho ligado ao centro, limitado
 // pelas laterais medidas abaixo das axilas (onde já não há manga).
-function torsoOf(m, mw, mh, cx, yMax = mh - 1) {
+function torsoOf(m, mw, mh, cx0, yMax = mh - 1, yMin = 0) {
+  // 1ª passada com o centro estimado; depois o centro real vem da própria camisa
+  // (meio do tronco abaixo das axilas), que não depende de braço levantado.
+  const first = torsoRuns(m, mw, mh, cx0, yMax, yMin);
+  if (!first) return null;
+  const mids = first.band.map((y) => (first.runs[y][0] + first.runs[y][1]) / 2).sort((a, b) => a - b);
+  const cx = mids[Math.floor(mids.length / 2)];
+  const second = torsoRuns(m, mw, mh, cx, yMax, yMin) || first;
+  return torsoFromRuns(second, mw, mh, cx);
+}
+
+function torsoRuns(m, mw, mh, cx, yMax, yMin = 0) {
   const runs = new Array(mh).fill(null);
-  for (let y = 0; y <= Math.min(mh - 1, yMax); y++) {
+  for (let y = Math.max(0, Math.round(yMin)); y <= Math.min(mh - 1, yMax); y++) {
     let x = Math.round(cx);
     if (x < 0 || x >= mw) continue;
     if (!m[y * mw + x]) { // centro pode cair numa costura/sombra: procura perto
@@ -61,7 +72,13 @@ function torsoOf(m, mw, mh, cx, yMax = mh - 1) {
   const med = (a) => { const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
   const band = ys.filter((y) => y > top + H * 0.58 && y < top + H * 0.9);
   if (band.length < 3) return null;
-  const halfL = med(band.map((y) => cx - runs[y][0])) * 1.02, halfR = med(band.map((y) => runs[y][1] - cx)) * 1.02;
+  return { runs, ys, band, med };
+}
+
+function torsoFromRuns({ runs, ys, band, med }, mw, mh, cx) {
+  // meia largura igual dos dois lados (camisa é simétrica; um braço encostado não puxa)
+  const half = med(band.map((y) => Math.min(cx - runs[y][0], runs[y][1] - cx))) * 1.03;
+  const halfL = half, halfR = half;
   const t = new Uint8Array(mw * mh);
   let tTop = null, tBot = 0;
   for (const y of ys) {
@@ -306,7 +323,8 @@ export async function analyzeShirt(img, pose, { longSleeve = false } = {}) {
   const named = colorName(rgb);
 
   // tronco sem mangas (estampas de frente/costas não vazam para os lados)
-  const tor = torsoOf(m, mw, mh, fromLocal(midX, chestY).x, fromLocal(midX, hem).y + 2); // não passa da barra (calça da mesma cor)
+  // não passa da barra (calça da mesma cor) nem sobe acima da gola (fundo da mesma cor)
+  const tor = torsoOf(m, mw, mh, fromLocal(midX, chestY).x, fromLocal(midX, hem).y + 2, Math.max(fromLocal(midX, collar).y - 0.04 * tl, S.y - 0.15 * tl));
 
   const norm = (X, Y) => { const q = fromLocal(X, Y); return { x: +(q.x / mw).toFixed(4), y: +(q.y / mh).toFixed(4) }; };
   return {

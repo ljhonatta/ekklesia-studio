@@ -23,7 +23,8 @@ export async function render(el, [idStr]) {
       <input class="title-input" id="name" value="${esc(design.name)}" aria-label="Nome do design">
       <div class="detail-head-actions">
         <select id="status" aria-label="Status">${STATUS.map((s) => `<option value="${s.id}" ${s.id === design.status ? 'selected' : ''}>${s.label}</option>`).join('')}</select>
-        <a class="btn primary" id="apply" href="#">Aplicar em produto</a>
+        <a class="btn" id="apply" href="#">Mockup manual</a>
+        <button class="btn primary" id="launch">Lançar como produto</button>
       </div>
     </header>
     <div class="detail-grid">
@@ -98,6 +99,7 @@ export async function render(el, [idStr]) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.view) { viewing = +b.dataset.view; draw(); }
+    else if (b.id === 'launch') launch(b);
     else if (b.id === 'pack') packFlow(current(), b);
     else if (b.dataset.current) {
       await setCurrentVersion(id, +b.dataset.current);
@@ -275,4 +277,18 @@ async function packFlow(v, btn) {
   } catch (err) { console.error(err); toast(`Não foi possível gerar: ${err.message}`, 'err'); }
   btn.disabled = false;
   label.textContent = old;
+}
+
+// Lançar como produto: escolhe modelos e posição; cria os produtos com mockups.
+async function launch(btn) {
+  const { launchFlow } = await import('./apply-art.js');
+  const id = +location.hash.match(/design\/(\d+)/)[1];
+  const old = btn.textContent;
+  btn.disabled = true;
+  try {
+    const ids = await launchFlow(id, (m) => { btn.textContent = `Estampando ${m}…`; });
+    if (ids.length) { toast(`${ids.length} produto(s) criado(s).`); location.hash = ids.length === 1 ? `#/produto/${ids[0]}` : '#/produtos'; }
+  } catch (err) { console.error(err); toast(err.message, 'err'); }
+  btn.disabled = false;
+  btn.textContent = old;
 }

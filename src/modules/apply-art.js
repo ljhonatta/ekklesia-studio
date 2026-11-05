@@ -156,3 +156,65 @@ export async function createProductWithArt(base, opts, onProgress = () => {}) {
   if (opts.ativo) autoPublish();
   return id;
 }
+
+// ---------- caminho direto: da arte para o(s) produto(s) ----------
+const POSICOES = [
+  ['costas:total', 'Costas inteiras (justo, sem manga)'], ['costas:principal', 'Costas central (A3)'], ['costas:costas-superior', 'Costas superior'],
+  ['frente:peito-esquerdo', 'Peito esquerdo (logo)'], ['frente:peito-central', 'Peito central'], ['frente:principal', 'Frente grande (A3)'], ['frente:total', 'Frente inteira (justo)'],
+];
+const NOME_PECA = { 'oversize-masc': 'Oversized', 'oversize-fem': 'Oversized Feminina', 'tech-fem': 'Tech Feminina' };
+const titulo = (s) => s.toLowerCase().replace(/(^|[\s·\-(])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
+
+/** "Lançar como produto" a partir de uma arte: um produto por modelo marcado. Retorna os ids. */
+export async function launchFlow(designId, onProgress = () => {}) {
+  const design = await db.designs.get(designId);
+  const bases = (await db.products.toArray()).filter((p) => p.base && p.peca);
+  if (!bases.length) { toast('Nenhum modelo base com fotos ainda. Sincronize a nuvem.', 'err'); return []; }
+  const allPhotos = await db.photos.toArray();
+  const designs = (await db.designs.orderBy('updatedAt').reverse().toArray()).filter((d) => d.id !== designId);
+  const v = await db.versions.get(design.currentVersionId);
+  const info = await analyzeArt(artBlob(v));
+  const wide = v.width / v.height > 1.6; // logo deitado: peito por padrão
+  let read = null;
+  const ok = await modal({
+    title: 'Lançar como produto', wide: true,
+    body: `<div class="apply-art">
+      <div class="launch-head"><span class="thumb checker"><img src="${URL.createObjectURL(v.thumb)}" alt=""></span>
+        <div><b>${esc(design.name)}</b><small class="muted">${info.colorida ? 'Arte colorida (vai em cores originais)' : `Tinta ${info.inkDark ? 'escura' : 'clara'}${info.accents.length ? ` + ${info.accents.map((a) => a.name).join(', ')}` : ''}: troca sozinha conforme a cor da camisa`}</small></div></div>
+      <label class="field"><span>Nome do produto</span><input id="lNome" value="${esc(titulo(design.name))}"></label>
+      <div class="field"><span>Modelos</span><div class="chips" id="lBases">${bases.map((b) => {
+        const n = allPhotos.filter((p) => p.peca === b.peca).length;
+        return `<label class="chip"><input type="checkbox" value="${b.id}" ${n ? 'checked' : 'disabled'}> ${esc(NOME_PECA[b.peca] || b.nome)} <small>${n} fotos · R$ ${String(b.precoLancamento || b.preco).replace('.', ',')}</small></label>`;
+      }).join('')}</div></div>
+      <div class="form-grid two">
+        <label class="field"><span>Onde vai esta arte</span><select id="lPos">${POSICOES.map(([k, l]) => `<option value="${k}" ${k === (wide ? 'frente:peito-esquerdo' : 'costas:total') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="field"><span>Logo no outro lado (opcional)</span><select id="lExtra"><option value="">— nenhum —</option>${designs.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}</select></label>
+      </div>
+      <label class="toggle small"><input type="checkbox" id="lAuto" checked><span>Cor da arte automática pela cor da camisa</span></label>
+      <label class="toggle"><input type="checkbox" id="lAtivo" checked><span>Já colocar à venda no site (Ativo)</span></label>
+      <p class="hint">Um produto por modelo, com todas as cores e fotos daquele modelo. O logo do outro lado vai no peito esquerdo (arte nas costas) ou nas costas superiores (arte na frente).</p>
+    </div>`,
+    actions: [{ label: 'Cancelar', value: false }, { label: 'Lançar', value: true, kind: 'primary' }],
+    onOpen: (m) => {
+      read = () => ({
+        nome: $('#lNome', m).value.trim() || titulo(design.name), bases: $$('#lBases input:checked', m).map((i) => +i.value),
+        pos: $('#lPos', m).value, extra: +$('#lExtra', m).value || null, auto: $('#lAuto', m).checked, ativo: $('#lAtivo', m).checked,
+      });
+    },
+  });
+  if (!ok) return [];
+  const o = read();
+  if (!o.bases.length) { toast('Marque ao menos um modelo.', 'err'); return []; }
+  const [lado, area] = o.pos.split(':');
+  const ids = [];
+  for (const bid of o.bases) {
+    const base = bases.find((b) => b.id === bid);
+    const cores = [...new Set(allPhotos.filter((p) => p.peca === base.peca).map((p) => p.cor))];
+    const opts = lado === 'costas'
+      ? { back: designId, pBack: area, front: o.extra, pFront: 'peito-esquerdo' }
+      : { front: designId, pFront: area, back: o.extra, pBack: 'costas-superior' };
+    const nome = `${NOME_PECA[base.peca] || 'Camiseta'} ${o.nome}`;
+    ids.push(await createProductWithArt(base, { ...opts, cores, auto: o.auto, nome, ativo: o.ativo }, (msg) => onProgress(`${NOME_PECA[base.peca]}: ${msg}`)));
+  }
+  return ids;
+}

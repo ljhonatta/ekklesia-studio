@@ -7,7 +7,7 @@ import { canvasToBlob, dataURLToBlob } from './util.js';
 import { detectPose } from './pose.js';
 import { analyzeShirt, analyzeGarment } from './shirt.js';
 
-export const ANALYSIS_VERSION = 4;
+export const ANALYSIS_VERSION = 5;
 
 export const TIPOS_FOTO = ['Camiseta', 'Babylook', 'Polo', 'Manga longa', 'Moletom', 'Moletom com capuz', 'Regata', 'Short', 'Conjunto', 'Boné'];
 export const VISTAS_FOTO = [
@@ -137,8 +137,11 @@ function poseAreas(p, yawDeg) {
     return { id: d.id, label: d.label, mode: 'cyl', s, y, w, h, cmW: +(w / f.ppc).toFixed(1), cmH: +(h / f.ppc).toFixed(1), cx: c.x, cy: c.y, rot: f.roll / DEG, outline, hidden: vis < 0.15 };
   };
   const list = (back ? BACK : FRONT).map(make);
-  // costas/frente inteira, justa no tronco (sem mangas)
-  if (sh?.torso) list.splice(1, 0, torsoArea(p, sh, back, f.roll / DEG, f.ppc));
+  // costas/frente inteira, justa no tronco (sem mangas); peito medido pelo tronco
+  if (sh?.torso) {
+    list.splice(1, 0, torsoArea(p, sh, back, f.roll / DEG, f.ppc));
+    if (!back) chestAreas(p, sh, f.roll / DEG, f.ppc).forEach((c) => { const i = list.findIndex((a) => a.id === c.id); if (i >= 0) list[i] = c; });
+  }
 
   // mangas (planas, ao longo do braço): 7×7 cm a ~7 cm do ombro
   const pts = p.pose.pts;
@@ -176,12 +179,30 @@ function torsoArea(p, sh, back, rot = 0, ppc = null) {
   const t = sh.torso;
   const W = (t.r - t.l) * p.w, top = t.t * p.h, bot = t.b * p.h, H = bot - top;
   const padTop = ppc ? (back ? 3 : 5) * ppc : H * (back ? 0.06 : 0.1), padBot = ppc ? 3 * ppc : H * 0.05;
-  const w = W * 0.94, h = Math.max(H * 0.5, H - padTop - padBot);
+  const w = W * 0.9, h = Math.max(H * 0.5, H - padTop - padBot);
   return {
     id: 'total', label: back ? 'Costas inteiras (justo)' : 'Frente inteira (justo)', mode: 'flat', cover: true,
     cx: (t.l + t.r) / 2 * p.w, cy: top + padTop + h / 2, w, h, rot,
     cmW: ppc ? +(w / ppc).toFixed(1) : undefined, cmH: ppc ? +(h / ppc).toFixed(1) : undefined,
   };
+}
+
+// Peito pelo contorno real do tronco: o peito esquerdo de quem veste fica à
+// direita da foto (pessoa de frente), no meio entre o centro e a lateral, na
+// altura do peito (cerca de 1/6 do comprimento abaixo da gola).
+function chestAreas(p, sh, rot = 0, ppc = null) {
+  const t = sh.torso;
+  const W = (t.r - t.l) * p.w, top = t.t * p.h, len = (t.b - t.t) * p.h;
+  const cx = ((t.l + t.r) / 2) * p.w;
+  const y = top + len * 0.2;
+  const logo = W * 0.2, central = W * 0.3;
+  const cm = (v) => (ppc ? +(v / ppc).toFixed(1) : undefined);
+  const mk = (id, label, x, yy, w) => ({ id, label, mode: 'flat', cx: x, cy: yy, w, h: w, rot, cmW: cm(w), cmH: cm(w) });
+  return [
+    mk('peito-esquerdo', 'Peito esquerdo', cx + W * 0.25, y, logo),
+    mk('peito-direito', 'Peito direito', cx - W * 0.25, y, logo),
+    mk('peito-central', 'Peito central', cx, top + len * 0.17, central),
+  ];
 }
 
 // Sem corpo detectado (ex.: close): áreas planas a partir do enquadramento.
@@ -209,7 +230,10 @@ function fallbackAreas(p) {
         flat('peito-direito', 'Peito direito', cx - w * 0.27, cy - h * 0.3, s, s),
       ];
     })();
-  if (sh) list.splice(1, 0, torsoArea(p, sh, isBack(p)));
+  if (sh) {
+    list.splice(1, 0, torsoArea(p, sh, isBack(p)));
+    if (!isBack(p)) chestAreas(p, sh).forEach((c) => { const i = list.findIndex((a) => a.id === c.id); if (i >= 0) list[i] = c; });
+  }
   list.frame = null;
   return list;
 }

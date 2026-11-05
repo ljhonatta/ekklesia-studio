@@ -51,7 +51,27 @@ const NAMES = { nose: 'nose', ls: 'left_shoulder', rs: 'right_shoulder', le: 'le
  * Retorna { ok, pts: {nome: {x, y, v}} (normalizado 0–1), facing } ou { ok: false }.
  * `facing` = 'back' quando o rosto não aparece (foto de costas).
  */
+// Foto cortada justa (pessoa encostando na borda): a IA erra. Tenta de novo com
+// margem nas laterais (bordas esticadas) e devolve os pontos na foto original.
 export async function detectPose(img) {
+  const r = await detectPoseOnce(img);
+  if (r.ok) return r;
+  const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+  if (W / H > 0.75) return r;
+  const pad = Math.round(W * 0.35);
+  const c = document.createElement('canvas');
+  c.width = W + pad * 2; c.height = H;
+  const x = c.getContext('2d');
+  x.drawImage(img, 0, 0, 1, H, 0, 0, pad, H);
+  x.drawImage(img, W - 1, 0, 1, H, pad + W, 0, pad, H);
+  x.drawImage(img, pad, 0);
+  const p = await detectPoseOnce(c);
+  if (!p.ok) return r;
+  for (const q of Object.values(p.pts)) q.x = +((q.x * c.width - pad) / W).toFixed(4);
+  return { ...p, padded: true };
+}
+
+async function detectPoseOnce(img) {
   const detector = await getDetector();
   const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
   const [pose] = await detector.estimatePoses(img, { flipHorizontal: false });
