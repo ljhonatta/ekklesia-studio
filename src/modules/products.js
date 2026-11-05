@@ -4,7 +4,7 @@ import { CATEGORIAS, SIZES, TECNICAS, DISPONIBILIDADE, PRODUCT_STATUS, brl, pars
 import { COLORS } from '../garments.js';
 import { productImages, nextSku, uniqueSlug, duplicateProduct } from '../products.js';
 import { getPresets, PRESET_GROUPS } from '../presets.js';
-import { autoPublish } from '../store-publish.js';
+import { autoPublish, getLoja, linkVenda, isLinkLoja } from '../store-publish.js';
 
 const GENEROS = ['Unissex', 'Masculino', 'Feminino'];
 const generoFor = (cat) => (/feminina|babylook/i.test(cat) ? 'Feminino' : /masculina/i.test(cat) ? 'Masculino' : 'Unissex');
@@ -186,8 +186,8 @@ export async function edit(el, [idStr], query) {
         </div>
         <p class="hint" id="margemInfo"></p>
         ${p.fornecedor ? `<p class="hint">Fornecedor: <b>${esc(p.fornecedor.nome)}</b> · ${esc(p.fornecedor.ref)} · varejo ${brl(p.fornecedor.varejo)} · atacado ${brl(p.fornecedor.atacado)} · alto atacado ${brl(p.fornecedor.altoAtacado)} (custo usado). Só aparece aqui no Estúdio.</p>` : ''}
-        ${input('linkCompra', 'Link de compra', 'type="url" placeholder="https://loja.../produto"')}
-        <p class="hint">Sem link, o botão do catálogo leva ao WhatsApp da marca (definido em Configurações).</p>
+        ${input('linkCompra', 'Link de venda', 'type="url" placeholder="Gerado sozinho ao deixar Ativo"')}
+        <p class="hint">Com status <b>Ativo</b>, o link do produto no site é criado sozinho ao salvar. Só preencha se quiser vender por outro link.</p>
       </section>
 
       <section class="panel">
@@ -304,6 +304,7 @@ export async function edit(el, [idStr], query) {
       const cats = await db.catalogs.toArray();
       for (const c of cats) if (c.productIds?.includes(p.id)) await db.catalogs.update(c.id, { productIds: c.productIds.filter((x) => x !== p.id) });
       toast('Produto excluído.');
+      if (p.status === 'ativo') autoPublish();
       location.hash = '#/produtos';
     }
   });
@@ -316,11 +317,13 @@ export async function edit(el, [idStr], query) {
     p.tamanhos = SIZES.filter((s) => p.tamanhos.includes(s));
     p.medidas = Object.fromEntries(Object.entries(p.medidas || {}).filter(([s, m]) => p.tamanhos.includes(s) && (m.largura || m.comprimento)));
     p.slug = await uniqueSlug(slugify(p.slug || p.nome), p.id);
+    const lojaCfg = await getLoja();
+    if (isLinkLoja(p.linkCompra, lojaCfg)) p.linkCompra = p.status === 'ativo' ? linkVenda(p, lojaCfg) : '';
     p.updatedAt = Date.now();
     p.createdAt ||= p.updatedAt;
     try {
       const id = await db.products.put(p);
-      toast('Produto salvo.');
+      toast(p.status === 'ativo' ? 'Produto salvo.' : 'Produto salvo como rascunho (não aparece no site).');
       autoPublish();
       location.hash = `#/produto/${id}`;
     } catch (err) { console.error(err); toast('Não foi possível salvar.', 'err'); }
@@ -339,7 +342,7 @@ export async function page(el, [idStr]) {
   const pf = p.productionFileId ? await db.productionFiles.get(p.productionFileId) : null;
   const buy = buyLink(p, brand);
   const sizes = Object.keys(p.medidas || {});
-  const missing = [!p.preco && 'preço', !imgs.length && 'imagem', !p.linkCompra && 'link de compra', !pf && 'arquivo de produção'].filter(Boolean);
+  const missing = [!p.preco && 'preço', !imgs.length && 'imagem', p.status === 'ativo' && !p.linkCompra && 'link de venda (salve a ficha)', !pf && 'arquivo de produção'].filter(Boolean);
 
   el.innerHTML = `
     <div class="product-top">
@@ -347,6 +350,7 @@ export async function page(el, [idStr]) {
       <div class="actions-row tight"><button class="btn" id="dup">Duplicar</button><a class="btn" href="#/produto/${p.id}/editar">Editar ficha</a></div>
     </div>
     ${p.base ? '<p class="banner">Peça base do fornecedor: clique em <b>Duplicar</b> para criar um produto com a sua arte (mesmo preço e ficha).</p>' : ''}
+    ${p.status === 'ativo' && p.linkCompra ? `<p class="banner sale-link">À venda no site: <a class="link" href="${esc(p.linkCompra)}" target="_blank" rel="noopener">${esc(p.linkCompra)}</a> <button class="btn sm" id="copyLink">Copiar link</button></p>` : ''}
     ${missing.length ? `<p class="banner warn">Falta preencher: ${missing.join(', ')}.</p>` : ''}
     <article class="pdp">
       <div class="pdp-gallery">
@@ -386,6 +390,7 @@ export async function page(el, [idStr]) {
     </section>`;
 
   el.addEventListener('click', async (e) => {
+    if (e.target.closest('#copyLink')) { navigator.clipboard.writeText(p.linkCompra).then(() => toast('Link copiado.')); return; }
     if (e.target.closest('#dup')) {
       const id = await duplicateProduct(p.id);
       toast('Cópia criada. Troque o nome e a arte.');

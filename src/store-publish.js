@@ -8,7 +8,7 @@ import { tecLabel, siteURL, instagramURL, whatsappURL, DEFAULT_BRAND } from './d
 import { toast, canvasToBlob } from './util.js';
 
 export const DEFAULT_LOJA = {
-  repo: 'ljhonatta/ekklesia-loja', branch: 'main', dominio: 'ekklesiastoreide.com.br', auto: false,
+  repo: 'ljhonatta/ekklesia-loja', branch: 'main', dominio: 'ekklesiastoreide.com.br', autoPublicar: true,
   pixChave: 'contato@ekklesiastoreide.com.br', pixNome: 'GABRIEL DA SILVA MOTA', pixCidade: 'RONDONOPOLIS', whatsapp: '',
   entradaPct: 50, lancDesconto: 40, lancLimite: 50, freteGratisAcima: 299,
   heroTitulo: 'Vista o que você crê', heroDestaque: 'EKKLESIA', heroVersiculo: '"Ide por todo o mundo e pregai o evangelho." — Mc 16:15',
@@ -26,6 +26,10 @@ export async function getLoja() {
   return loja;
 }
 export const getToken = () => getSetting('lojaToken', '');
+
+// Link de venda do produto no site (gerado sozinho a partir do endereço do produto).
+export const linkVenda = (p, loja) => `https://${loja?.dominio || DEFAULT_LOJA.dominio}/#/produto/${encodeURIComponent(p.slug)}`;
+export const isLinkLoja = (url, loja) => !url || url.includes(`${loja?.dominio || DEFAULT_LOJA.dominio}/#/produto/`);
 
 // ---------- GitHub ----------
 async function gh(token, path, opts = {}) {
@@ -153,16 +157,18 @@ export async function publishStore(onProgress = () => {}) {
   return running;
 }
 
-// Publicação automática depois de salvar um produto (se ligada).
+// Publicação automática: toda mudança de produto vai para o site (pode desligar em Loja online).
 let timer = 0;
 export async function autoPublish() {
   const loja = await getLoja();
-  if (!loja.auto || !(await getToken()) || !loja.pixChave) return;
+  if (loja.autoPublicar === false || !loja.pixChave) return;
+  if (!(await getToken())) { toast('Produto salvo. Para ir direto para o site, cole o token do GitHub em Loja online.', 'err'); return; }
+  toast('Atualizando o site…');
   clearTimeout(timer);
   timer = setTimeout(async () => {
     try {
       const r = await publishStore();
-      toast(r.changed ? `Loja atualizada (${r.produtos} peças). Entra no ar em ~1 min.` : 'Loja já estava atualizada.');
+      toast(r.changed ? `Site atualizado: ${r.produtos} peça(s) à venda. Entra no ar em ~1 min.` : 'O site já estava atualizado.');
     } catch (e) { toast(`Loja não atualizada: ${e.message}`, 'err'); }
   }, 1500);
 }

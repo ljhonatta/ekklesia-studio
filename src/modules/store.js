@@ -79,7 +79,7 @@ export async function render(el) {
         <label class="field"><span>Domínio</span><input name="dominio" value="${esc(loja.dominio)}"></label>
         <label class="field"><span>Token do GitHub (fica só neste navegador)</span><input type="password" id="token" value="${esc(token)}" autocomplete="off" placeholder="github_pat_..."></label>
         <p class="hint">Crie em github.com → Settings → Developer settings → <b>Fine-grained tokens</b>: acesso só ao repositório <b>${esc(loja.repo)}</b>, permissão <b>Contents: Read and write</b>. O token não vai para backups nem para a loja.</p>
-        <label class="toggle"><input type="checkbox" name="auto" ${loja.auto ? 'checked' : ''}><span>Publicar automaticamente ao salvar um produto</span></label>
+        <label class="toggle"><input type="checkbox" name="autoPublicar" ${loja.autoPublicar !== false ? 'checked' : ''}><span>Atualizar o site sozinho sempre que um produto for salvo (recomendado)</span></label>
         <div class="actions-row"><button type="button" class="btn" id="test">Testar conexão</button></div>
       </section>
       <div class="form-actions"><span></span><button class="btn primary">Salvar configurações</button></div>
@@ -124,7 +124,8 @@ export async function render(el) {
     const fd = new FormData(form);
     const next = { ...loja };
     for (const [k, v] of fd.entries()) next[k] = typeof v === 'string' ? v.trim() : v;
-    next.auto = form.auto.checked;
+    next.autoPublicar = form.autoPublicar.checked;
+    delete next.auto;
     for (const k of ['entradaPct', 'lancDesconto', 'lancLimite', 'freteGratisAcima']) next[k] = next[k] === '' ? loja[k] : Math.max(0, +String(next[k]).replace(',', '.') || 0);
     next.entradaPct = Math.min(100, Math.max(1, next.entradaPct));
     next.pixNome = next.pixNome.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().slice(0, 25);
