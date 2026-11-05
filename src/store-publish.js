@@ -9,7 +9,7 @@ import { toast, canvasToBlob } from './util.js';
 
 export const DEFAULT_LOJA = {
   repo: 'ljhonatta/ekklesia-loja', branch: 'main', dominio: 'ekklesiastoreide.com.br', autoPublicar: true,
-  pixChave: 'contato@ekklesiastoreide.com.br', pixNome: 'GABRIEL DA SILVA MOTA', pixCidade: 'RONDONOPOLIS', whatsapp: '',
+  pixChave: 'contato@ekklesiastoreide.com.br', pixNome: 'GABRIEL DA SILVA MOTA', pixCidade: 'RONDONOPOLIS', whatsapp: '5566999367468',
   entradaPct: 50, lancDesconto: 40, lancLimite: 50, freteGratisAcima: 299,
   heroTitulo: 'Vista o que você crê', heroDestaque: 'EKKLESIA', heroVersiculo: '"Ide por todo o mundo e pregai o evangelho." — Mc 16:15',
   heroTexto: 'Streetwear cristão premium. Cada peça é uma declaração de fé, feita para ser vestida com propósito.',
@@ -22,8 +22,8 @@ export const DEFAULT_LOJA = {
 export async function getLoja() {
   const saved = await getSetting('loja', {});
   const loja = { ...DEFAULT_LOJA, ...saved };
-  // Pix em branco volta para a conta padrão da marca.
-  for (const k of ['pixChave', 'pixNome', 'pixCidade']) if (!String(loja[k] || '').trim()) loja[k] = DEFAULT_LOJA[k];
+  // Pix e WhatsApp em branco voltam para os da marca.
+  for (const k of ['pixChave', 'pixNome', 'pixCidade', 'whatsapp']) if (!String(loja[k] || '').trim()) loja[k] = DEFAULT_LOJA[k];
   return loja;
 }
 export const getToken = () => getSetting('lojaToken', '');
