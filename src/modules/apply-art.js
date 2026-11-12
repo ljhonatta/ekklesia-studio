@@ -30,7 +30,7 @@ async function artFor(version, tom, auto, cache) {
   const shirtDark = tom === 'escura', shirtLight = tom === 'clara';
   let a = cache.get(version.id);
   if (!a) {
-    const blob = artBlob(version);
+    const blob = version.mime === 'image/svg+xml' ? version.original : artBlob(version);
     const img = await loadImage(blob);
     const info = await analyzeArt(blob);
     a = { img, info, out: new Map() };
@@ -46,7 +46,8 @@ async function artFor(version, tom, auto, cache) {
     const max = 1600, k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
     const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
     let c;
-    if (mode === 'cor') c = dtfLayer(img, w, h, info);
+    if (mode === 'cor' && info.colorida) c = dtfLayer(img, w, h, info);
+    else if (mode === 'cor') { const d = drawAt(img, w, h); c = inkLayer(d.c, d.x, info, { mode: 'tinta', ink: info.inkDark ? [20, 20, 20] : [245, 243, 237] }); }
     else { const d = drawAt(img, w, h); c = inkLayer(d.c, d.x, info, { mode: 'tinta', ink: INKS[mode].rgb }); }
     a.out.set(mode, await loadImage(await canvasToBlob(c, 'image/png')));
   }

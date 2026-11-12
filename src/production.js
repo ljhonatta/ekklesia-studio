@@ -99,7 +99,7 @@ export async function withDpi(blob, dpi) {
 }
 
 export async function renderProductionPNG(v, pf) {
-  const img = await loadImage(artBlob(v));
+  const img = await loadImage(isVector(v) ? v.original : artBlob(v)); // SVG: nítido em qualquer tamanho
   const { w, h, dpi } = targetPixels(pf);
   const c = document.createElement('canvas');
   c.width = w; c.height = h;

@@ -34,6 +34,7 @@ export async function render(el, [idStr]) {
             <button data-bg="checker" class="active">Xadrez</button><button data-bg="light">Claro</button><button data-bg="dark">Escuro</button>
           </div>
           <div class="actions-row tight">
+            <button class="btn sm primary" id="vec" title="Transforma a arte em vetor (SVG): nítida em qualquer tamanho">Vetorizar</button>
             <button class="btn sm" id="bgr">Remover fundo</button>
             <button class="btn ghost sm" id="dl">${ICONS.download}<span>Baixar original</span></button>
           </div>
@@ -113,6 +114,8 @@ export async function render(el, [idStr]) {
       $('#stage', el).className = `art-stage ${bg}`;
     } else if (b.id === 'bgr') {
       removeBgFlow(current());
+    } else if (b.id === 'vec') {
+      vectorizeFlow(current(), b);
     } else if (b.id === 'dl') {
       const v = current();
       download(v.original, v.fileName || `${slugify(design.name)}-v${v.n}`);
@@ -240,6 +243,36 @@ export async function render(el, [idStr]) {
     } catch (err) { console.error(err); toast('Não foi possível remover o fundo.', 'err'); }
   }
 
+  // ---------- vetorizar ----------
+  async function vectorizeFlow(v, btn) {
+    if (v.mime === 'image/svg+xml') { toast('Esta versão já é vetor (SVG).'); return; }
+    const old = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Vetorizando…';
+    try {
+      const { vectorize } = await import('../vectorize.js');
+      const { svg, colorida, colors, inkDark } = await vectorize(artBlob(v));
+      const svgBlob = new Blob([svg], { type: 'image/svg+xml' });
+      const before = objURL(artBlob(v)), after = objURL(svgBlob);
+      const choice = await modal({
+        title: 'Vetorizar arte', wide: true,
+        body: `${colorida ? '<p class="banner warn">Arte com muitas cores ou sombras: o vetor fica com manchas. Para artes assim, prefira o PNG em alta resolução.</p>' : `<p class="hint">${colors} cor(es) de tinta. Fundo removido. Confira o detalhe ampliado.</p>`}
+          <div class="vec-compare"><figure><figcaption>Antes (pixels)</figcaption><div class="vec-zoom checker"><img src="${before}" alt=""></div></figure>
+          <figure><figcaption>Vetor (SVG)</figcaption><div class="vec-zoom ${inkDark ? 'checker' : 'dark-bg'}"><img src="${after}" alt=""></div></figure></div>
+          <p class="hint">O vetor fica salvo como nova versão; a original continua guardada. Mockups e arquivos de produção passam a usar o vetor.</p>`,
+        actions: [{ label: 'Cancelar', value: null }, { label: 'Salvar vetor como nova versão', value: 'save', kind: 'primary' }],
+      });
+      if (choice !== 'save') return;
+      const base = (v.fileName || slugify(design.name)).replace(/\.[^.]+$/, '');
+      const art = await prepareArtFile(new File([svgBlob], `${base}-vetor.svg`, { type: 'image/svg+xml' }));
+      await addVersion(id, art, 'vetor', `Vetorizada a partir da V${v.n}`);
+      design = await db.designs.get(id);
+      versions = await db.versions.where('designId').equals(id).sortBy('n');
+      viewing = design.currentVersionId;
+      toast(`V${design.versionCount} em vetor criada. A V${v.n} continua salva.`);
+      draw();
+    } catch (err) { console.error(err); toast(err.message || 'Não foi possível vetorizar.', 'err'); } finally { btn.disabled = false; btn.textContent = old; }
+  }
+
   draw();
 }
 
@@ -269,7 +302,8 @@ async function packFlow(v, btn) {
   const label = btn.querySelector('span');
   const old = label.textContent;
   try {
-    const { files } = await buildPack({ name: design.name, art: artBlob(v), bordadoArt: bordado ? artBlob(bordado) : null, onProgress: (m) => { label.textContent = `Gerando ${m}…`; } });
+    const full = (x) => (x.mime === 'image/svg+xml' ? x.original : artBlob(x)); // vetor: desenha direto no tamanho final
+    const { files } = await buildPack({ name: design.name, art: full(v), bordadoArt: bordado ? full(bordado) : null, onProgress: (m) => { label.textContent = `Gerando ${m}…`; } });
     label.textContent = 'Compactando…';
     const root = design.name.toUpperCase().replace(/[\\/:*?"<>|]+/g, '').trim() || 'ARTE';
     download(await zip(files, root), `${slugify(design.name)}-producao.zip`);

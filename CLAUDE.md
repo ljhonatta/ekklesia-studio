@@ -35,6 +35,9 @@ e coloque em `USERS`. Trocar o hash derruba as sessões abertas.
 ## Modelos base + criar produto com arte
 Fotos de modelo vestindo ficam em `photos` com `peca` ('oversize-masc' | 'oversize-fem' | 'tech-fem') e `cor`. Produtos base com o mesmo `peca` ganham o botão "Criar produto com arte" (`src/modules/apply-art.js`): estampa a arte (costas/frente, área escolhida) em todas as fotos das cores marcadas, troca a cor da tinta pelo tom cadastrado da camisa e cria o produto (Ativo = vai para o site).
 
+## Vetor e nitidez
+`src/vectorize.js` (imagetracerjs pelo jsDelivr) gera SVG por tintas; botão Vetorizar na página da arte salva como nova versão. Produção e mockups usam o SVG original quando a versão é vetor. Mockup reduz a arte em etapas (`downscaled` em photos.js) e suaviza dobras/textura em estampas pequenas.
+
 ## Vendas (Firebase ekklesia-loja)
 Pedidos, contas de cliente, custos e estoque ficam no Firebase (projeto `ekklesia-loja`, Firestore em São Paulo). O site grava pedidos em `pedidos`; o painel `#/vendas` (`src/modules/vendas.js` + `src/fb-admin.js`) lê tudo como admin. Admin = `jhonatta258@gmail.com` ou `contato@ekklesiastoreide.com.br`, com e-mail confirmado (regras em `ekklesia-loja/firestore.rules`, publicadas no console). Internos em `interno/config`, `interno/estoque`, `interno/custos/pedidos/{id}`. Teste local do painel: `.test/vendas.html` com `.test/fb-mock.js`.
 

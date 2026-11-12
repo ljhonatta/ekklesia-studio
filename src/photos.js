@@ -407,6 +407,29 @@ function warpByFabric(actx, shade, region, scale, strength) {
   actx.putImageData(out, x0, y0);
 }
 
+// Reduz em etapas de 1/2 (com suavização alta) até perto do tamanho final:
+// reduzir 10x de uma vez serrilha logos e letras finas.
+const downCache = new WeakMap();
+function downscaled(img, tw, th) {
+  let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+  if (w <= tw * 2 || /svg/.test(img.src || '')) return img;
+  const key = `${Math.round(tw)}x${Math.round(th)}`;
+  const hit = downCache.get(img);
+  if (hit?.key === key) return hit.c;
+  let src = img;
+  while (w > tw * 2) {
+    w = Math.max(1, Math.round(w / 2)); h = Math.max(1, Math.round(h / 2));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const x = c.getContext('2d');
+    x.imageSmoothingQuality = 'high';
+    x.drawImage(src, 0, 0, w, h);
+    src = c;
+  }
+  downCache.set(img, { key, c: src });
+  return src;
+}
+
 // Arte já no tamanho, girada e (opcionalmente) recolorida, em resolução `scale`.
 function prerender(img, layer, area, scale) {
   const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
@@ -418,10 +441,12 @@ function prerender(img, layer, area, scale) {
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.ceil(bw * scale)); c.height = Math.max(1, Math.ceil(bh * scale));
   const x = c.getContext('2d');
+  x.imageSmoothingEnabled = true;
+  x.imageSmoothingQuality = 'high';
   x.setTransform(scale, 0, 0, scale, 0, 0);
   x.translate(bw / 2, bh / 2);
   x.rotate(r);
-  x.drawImage(img, -aw / 2, -ah / 2, aw, ah);
+  x.drawImage(downscaled(img, aw * scale, ah * scale), -aw / 2, -ah / 2, aw, ah);
   if (layer.tint) {
     x.setTransform(1, 0, 0, 1, 0, 0);
     x.globalCompositeOperation = 'source-in';
@@ -495,7 +520,8 @@ export function renderPhotoMockup(ctx, opts, { scale = 1, guides = false, fast =
     sizes.push({ wCm: frame ? pre.aw / frame.ppc : null, hCm: frame ? pre.ah / frame.ppc : null });
 
     const shade = shadingFor(photo, img, areas[0]);
-    const warp = layer.warp ?? 0.5;
+    const small = Math.min(1, Math.max(0.2, Math.max(pre.aw, pre.ah) / (W * 0.3)));
+    const warp = (layer.warp ?? 0.5) * small;
     if (warp > 0 && !fast) {
       const r = Math.hypot(pre.bw, pre.bh) / 2 + 8;
       warpByFabric(actx, shade, { x: (center.x - r) * scale, y: (center.y - r) * scale, w: 2 * r * scale, h: 2 * r * scale }, scale, warp);
@@ -519,7 +545,7 @@ export function renderPhotoMockup(ctx, opts, { scale = 1, guides = false, fast =
       actx.setTransform(1, 0, 0, 1, 0, 0);
       actx.globalCompositeOperation = 'source-over';
     }
-    const fabric = layer.fabric ?? 0.6;
+    const fabric = (layer.fabric ?? 0.6) * (0.4 + 0.6 * small);
     if (fabric > 0) {
       const mask = document.createElement('canvas');
       mask.width = art.width; mask.height = art.height;
