@@ -126,6 +126,19 @@ document.addEventListener('click', (e) => { if (e.target.closest('#syncStatus'))
 
 // Dados novos de outro aparelho: atualiza a tela se não houver edição em andamento
 const SAFE = /^(|designs|design\/\d+|mockups|produtos|produto\/\d+|producao|catalogo|loja)$/;
+// Lixeira dos cartões de mockup fora da tela Mockups (painel, página da arte)
+document.addEventListener('click', async (e) => {
+  const del = e.target.closest('[data-delmock]');
+  if (!del) return;
+  e.preventDefault(); e.stopPropagation();
+  const { confirmDialog, toast } = await import('./util.js');
+  const { deleteMockup } = await import('./db.js');
+  if (!await confirmDialog('Excluir mockup', 'Excluir este mockup? Se ele estiver em algum produto, sai das fotos desse produto. A arte continua salva.', 'Excluir', true)) return;
+  const n = await deleteMockup(+del.dataset.delmock);
+  toast(n ? `Mockup excluído (saiu de ${n} produto(s)).` : 'Mockup excluído.');
+  route();
+});
+
 window.addEventListener('data-synced', () => {
   const p = location.hash.replace(/^#\/?/, '').split('?')[0];
   if (SAFE.test(p)) route();

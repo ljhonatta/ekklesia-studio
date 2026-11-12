@@ -1,5 +1,5 @@
 import { db, artBlob, currentVersions } from '../db.js';
-import { $, $$, esc, objURL, loadImage, toast, modal, download, slugify, canvasToBlob } from '../util.js';
+import { $, $$, esc, objURL, loadImage, toast, modal, confirmDialog, download, slugify, canvasToBlob } from '../util.js';
 import { GARMENTS, VIEWS, COLORS, garmentById, areasFor, defaultArea, W as VW, H as VH } from '../garments.js';
 import { renderMockup, BACKGROUNDS } from '../compose.js';
 import { renderPhotoMockup, photoAreas, photoLabel, detectPhoto, needsAnalysis, estimateYaw, dragDelta, isBack as isBackPhoto, loadMolde, TIPOS_FOTO, VISTAS_FOTO } from '../photos.js';
@@ -161,6 +161,7 @@ export async function render(el, [param], query) {
           <div class="ed-row">
             <button class="btn primary" id="save">${rec ? 'Salvar' : 'Salvar mockup'}</button>
             <button class="btn" id="saveNew" ${rec ? '' : 'hidden'}>Salvar como novo</button>
+            <button class="btn danger ghost" id="delMock" ${rec ? '' : 'hidden'}>Excluir mockup</button>
           </div>
           <button class="btn primary block photo-only" id="launchProd">Lançar como produto</button>
           <button class="btn block photo-only" id="aiReal" title="Envia a montagem para o GPT Image e devolve com cara de foto real">✦ Deixar realista com IA</button>
@@ -526,6 +527,15 @@ export async function render(el, [param], query) {
   }
 
   // ---------- lançar produto a partir deste mockup ----------
+  $('#delMock', el).addEventListener('click', async () => {
+    if (!rec) return;
+    if (!await confirmDialog('Excluir mockup', `Excluir <b>${esc(rec.name || 'este mockup')}</b>? Se ele estiver em algum produto, sai das fotos desse produto. A arte continua salva.`, 'Excluir', true)) return;
+    const { deleteMockup } = await import('../db.js');
+    const n = await deleteMockup(rec.id);
+    toast(n ? `Mockup excluído (saiu de ${n} produto(s)).` : 'Mockup excluído.');
+    location.hash = '#/mockups';
+  });
+
   $('#launchProd', el).addEventListener('click', async (e) => {
     const b = e.currentTarget;
     if (!img || !photo) { toast('Escolha a arte e a foto primeiro.', 'err'); return; }

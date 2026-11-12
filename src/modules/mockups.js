@@ -1,4 +1,4 @@
-import { db } from '../db.js';
+import { db, deleteMockup } from '../db.js';
 import { $, $$, esc, objURL, toast, modal, confirmDialog } from '../util.js';
 import { mockupCard, pageHead, empty, ICONS } from '../ui.js';
 import { TIPOS_FOTO, VISTAS_FOTO, MODELOS, MODELAGENS, vistaLabel, photoLabel, importImages, importPack, detectAll, needsAnalysis } from '../photos.js';
@@ -6,7 +6,7 @@ import { TIPOS_FOTO, VISTAS_FOTO, MODELOS, MODELAGENS, vistaLabel, photoLabel, i
 export async function render(el, _p, query) {
   let tab = query.tab === 'pecas' ? 'pecas' : 'salvos';
   let photos = await db.photos.orderBy('id').toArray();
-  const list = await db.mockups.orderBy('updatedAt').reverse().toArray();
+  let list = await db.mockups.orderBy('updatedAt').reverse().toArray();
   const names = new Map((await db.designs.bulkGet([...new Set(list.map((m) => m.designId).filter(Boolean))])).filter(Boolean).map((d) => [d.id, d.name]));
   let fTipo = '', fVista = '', fModelo = '';
 
@@ -108,7 +108,19 @@ export async function render(el, _p, query) {
     }
   }
 
-  el.addEventListener('click', (e) => {
+  el.addEventListener('click', async (e) => {
+    const del = e.target.closest('[data-delmock]');
+    if (del) {
+      e.preventDefault(); e.stopPropagation();
+      const id = +del.dataset.delmock, m = list.find((x) => x.id === id);
+      if (!await confirmDialog('Excluir mockup', `Excluir <b>${esc(m?.name || 'este mockup')}</b>? Se ele estiver em algum produto, sai das fotos desse produto. A arte continua salva.`, 'Excluir', true)) return;
+      const n = await deleteMockup(id);
+      list = list.filter((x) => x.id !== id);
+      el.querySelector('[data-tab="salvos"] b').textContent = list.length;
+      toast(n ? `Mockup excluído (saiu de ${n} produto(s)).` : 'Mockup excluído.');
+      drawTabs();
+      return;
+    }
     const t = e.target.closest('[data-tab]');
     if (t) { tab = t.dataset.tab; drawTabs(); return; }
     const c = e.target.closest('[data-edit]');

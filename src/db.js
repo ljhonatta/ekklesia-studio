@@ -126,3 +126,13 @@ export async function importBackup(file) {
     }
   });
 }
+
+// Exclui um mockup (por ação explícita). Sai também das fotos dos produtos que o usavam.
+export function deleteMockup(id) {
+  return db.transaction('rw', db.mockups, db.products, async () => {
+    const usados = await db.products.filter((p) => (p.mockupIds || []).includes(id)).toArray();
+    for (const p of usados) await db.products.update(p.id, { mockupIds: p.mockupIds.filter((x) => x !== id) });
+    await db.mockups.delete(id);
+    return usados.length;
+  });
+}

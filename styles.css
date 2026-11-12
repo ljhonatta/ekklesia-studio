@@ -693,3 +693,10 @@ body.locked .app, body.locked .toasts { display: none; }
 .form-grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .v-cfg { max-width: 560px; }
 @media (max-width: 860px) { .v-detail { grid-template-columns: minmax(0, 1fr); } .form-grid.four { grid-template-columns: 1fr 1fr; } .v-day { min-height: 60px; } .v-day button { font-size: 9px; } }
+
+/* excluir mockup no cartão */
+.mockup-card .thumb { position: relative; }
+.card-del { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(0,0,0,.65); color: #fff; cursor: pointer; font-size: 13px; opacity: 0; transition: opacity .15s; }
+.mockup-card:hover .card-del, .card-del:focus-visible { opacity: 1; }
+@media (hover: none) { .card-del { opacity: 1; } }
+.card-del:hover { background: var(--danger); }

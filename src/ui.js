@@ -54,7 +54,7 @@ export function mockupCard(m, designName) {
   const view = m.source === 'photo' ? 'Foto real' : m.view === 'costas' ? 'Costas' : 'Frente';
   return `
     <a class="card mockup-card" href="#/mockup/${m.id}">
-      <div class="thumb">${m.thumb ? `<img src="${objURL(m.thumb)}" alt="" loading="lazy">` : ''}</div>
+      <div class="thumb">${m.thumb ? `<img src="${objURL(m.thumb)}" alt="" loading="lazy">` : ''}<button class="card-del" data-delmock="${m.id}" title="Excluir mockup" aria-label="Excluir mockup">✕</button></div>
       <div class="card-body">
         <div class="card-title">${esc(m.name || designName || 'Mockup')}</div>
         <div class="card-meta"><span>${esc(label)} · ${view}</span>${m.source === 'photo' ? '' : `<span class="swatch-dot" style="background:${esc(m.color)}"></span>`}</div>
