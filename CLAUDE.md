@@ -38,6 +38,9 @@ Fotos de modelo vestindo ficam em `photos` com `peca` ('oversize-masc' | 'oversi
 ## Vetor e nitidez
 `src/vectorize.js` (imagetracerjs pelo jsDelivr) gera SVG por tintas; botão Vetorizar na página da arte salva como nova versão. Produção e mockups usam o SVG original quando a versão é vetor. Mockup reduz a arte em etapas (`downscaled` em photos.js) e suaviza dobras/textura em estampas pequenas.
 
+## Moldes profissionais (PSD)
+Foto em `photos` com `molde` = { mask (PNG com alfa), fx (sombras da camisa), dfx (luz/sombra por cima da arte), designBox } extraídos do PSD (psd-tools, meia resolução). `renderPhotoMockup` troca a cor da camisa (cor × sombras, luzes em cor escura) e aplica dfx sobre a arte. Lançar como produto gera uma foto do molde por cor (`COR_HEX` em apply-art). Moldes de terceiros (ex.: MockupRiver) ficam só na nuvem privada: não redistribuir.
+
 ## Vendas (Firebase ekklesia-loja)
 Pedidos, contas de cliente, custos e estoque ficam no Firebase (projeto `ekklesia-loja`, Firestore em São Paulo). O site grava pedidos em `pedidos`; o painel `#/vendas` (`src/modules/vendas.js` + `src/fb-admin.js`) lê tudo como admin. Admin = `jhonatta258@gmail.com` ou `contato@ekklesiastoreide.com.br`, com e-mail confirmado (regras em `ekklesia-loja/firestore.rules`, publicadas no console). Internos em `interno/config`, `interno/estoque`, `interno/custos/pedidos/{id}`. Teste local do painel: `.test/vendas.html` com `.test/fb-mock.js`.
 

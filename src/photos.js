@@ -474,6 +474,42 @@ function strokeOutline(ctx, a) {
  * opts: { photo, img, mask, layers: [{ area, x, y, scale, rot, opacity, img, blend, fabric, warp, tint, clip, yaw }] }
  * `fast`: pula a deformação (enquanto arrasta).
  */
+// ---------- molde profissional (PSD) ----------
+// photo.molde = { mask, fx: [{blob, blend}], dfx: [{blob, blend}], designBox }
+//  fx  = luz/sombra da camisa (vão por cima da cor trocada)
+//  dfx = luz/sombra que ficam POR CIMA da arte (a estampa "entra" no tecido)
+const BLEND = { MULTIPLY: 'multiply', SCREEN: 'screen', LINEAR_DODGE: 'lighter', OVERLAY: 'overlay', SOFT_LIGHT: 'soft-light', NORMAL: 'source-over' };
+const moldeCache = new Map();
+export async function loadMolde(photo) {
+  if (!photo?.molde) return null;
+  const hit = moldeCache.get(photo.id);
+  if (hit) return hit;
+  const L = async (f) => ({ ...f, img: await loadImg(f.blob) });
+  const m = { mask: await loadImg(photo.molde.mask), fx: await Promise.all((photo.molde.fx || []).map(L)), dfx: await Promise.all((photo.molde.dfx || []).map(L)) };
+  moldeCache.set(photo.id, m);
+  return m;
+}
+
+// Camisa na cor escolhida: cor chapada × sombras do molde, recortada pela máscara.
+function moldeShirt(ctx, molde, color, W, H, scale) {
+  const c = document.createElement('canvas');
+  c.width = Math.round(W * scale); c.height = Math.round(H * scale);
+  const x = c.getContext('2d');
+  x.fillStyle = color;
+  x.fillRect(0, 0, c.width, c.height);
+  for (const f of molde.fx) { x.globalCompositeOperation = BLEND[f.blend] || 'multiply'; x.globalAlpha = (f.op ?? 255) / 255; x.drawImage(f.img, 0, 0, c.width, c.height); }
+  // camisa escura: a sombra some no preto; as luzes do PSD devolvem as dobras
+  const v = parseInt(color.replace('#', '').padEnd(6, '0'), 16), L = (0.2126 * (v >> 16) + 0.7152 * ((v >> 8) & 255) + 0.0722 * (v & 255)) / 255;
+  if (L < 0.45) for (const f of molde.dfx.filter((d) => d.blend !== 'MULTIPLY')) { x.globalCompositeOperation = 'screen'; x.globalAlpha = 0.28 * (1 - L / 0.45) + 0.06; x.drawImage(f.img, 0, 0, c.width, c.height); }
+  x.globalAlpha = 1;
+  x.globalCompositeOperation = 'destination-in';
+  x.drawImage(molde.mask, 0, 0, c.width, c.height);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(c, 0, 0);
+  ctx.restore();
+}
+
 export function renderPhotoMockup(ctx, opts, { scale = 1, guides = false, fast = false } = {}) {
   const { photo, img } = opts;
   const W = photo.w, H = photo.h;
@@ -485,6 +521,9 @@ export function renderPhotoMockup(ctx, opts, { scale = 1, guides = false, fast =
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.clearRect(0, 0, W, H);
   ctx.drawImage(img, 0, 0, W, H);
+  const molde = opts.molde || null;
+  const shirtColor = opts.shirtColor ?? opts.layers?.[0]?.shirtColor;
+  if (molde && shirtColor) moldeShirt(ctx, molde, shirtColor, W, H, scale);
 
   for (const layer of opts.layers || []) {
     if (!layer.img) continue;
@@ -521,14 +560,14 @@ export function renderPhotoMockup(ctx, opts, { scale = 1, guides = false, fast =
 
     const shade = shadingFor(photo, img, areas[0]);
     const small = Math.min(1, Math.max(0.2, Math.max(pre.aw, pre.ah) / (W * 0.3)));
-    const warp = (layer.warp ?? 0.5) * small;
+    const warp = molde ? 0 : (layer.warp ?? 0.5) * small; // molde: o PSD já traz luz e sombra
     if (warp > 0 && !fast) {
       const r = Math.hypot(pre.bw, pre.bh) / 2 + 8;
       warpByFabric(actx, shade, { x: (center.x - r) * scale, y: (center.y - r) * scale, w: 2 * r * scale, h: 2 * r * scale }, scale, warp);
     }
     // só onde tem roupa
     // frente/costas: só o tronco (não vaza para as mangas); mangas: a peça toda
-    const clipMask = area.id.startsWith('manga') ? opts.mask : opts.torsoMask || opts.mask;
+    const clipMask = molde ? molde.mask : area.id.startsWith('manga') ? opts.mask : opts.torsoMask || opts.mask;
     if (layer.clip !== false && clipMask) {
       actx.globalCompositeOperation = 'destination-in';
       actx.imageSmoothingEnabled = true;
@@ -545,7 +584,18 @@ export function renderPhotoMockup(ctx, opts, { scale = 1, guides = false, fast =
       actx.setTransform(1, 0, 0, 1, 0, 0);
       actx.globalCompositeOperation = 'source-over';
     }
-    const fabric = (layer.fabric ?? 0.6) * (0.4 + 0.6 * small);
+    if (molde && molde.dfx.length) {
+      // luzes e sombras do PSD por cima da arte, só onde há arte
+      const keep = document.createElement('canvas');
+      keep.width = art.width; keep.height = art.height;
+      keep.getContext('2d').drawImage(art, 0, 0);
+      for (const f of molde.dfx) { const luz = f.blend !== 'MULTIPLY'; actx.globalCompositeOperation = BLEND[f.blend] || 'multiply'; actx.globalAlpha = ((f.op ?? 255) / 255) * (luz && layer.inkDark ? 0.3 : 1); actx.drawImage(f.img, 0, 0, art.width, art.height); } // tinta escura: luz forte deixaria cinza
+      actx.globalAlpha = 1;
+      actx.globalCompositeOperation = 'destination-in';
+      actx.drawImage(keep, 0, 0);
+      actx.globalCompositeOperation = 'source-over';
+    }
+    const fabric = molde ? 0 : (layer.fabric ?? 0.6) * (0.4 + 0.6 * small);
     if (fabric > 0) {
       const mask = document.createElement('canvas');
       mask.width = art.width; mask.height = art.height;

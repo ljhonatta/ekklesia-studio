@@ -3,7 +3,7 @@
 // peça (modelo vestindo), salva os mockups e cria o produto pronto para o site.
 import { db, artBlob } from '../db.js';
 import { $, $$, esc, toast, modal, loadImage, canvasToBlob, slugify } from '../util.js';
-import { renderPhotoMockup, isBack, needsAnalysis, detectPhoto } from '../photos.js';
+import { renderPhotoMockup, isBack, needsAnalysis, detectPhoto, loadMolde } from '../photos.js';
 import { analyzeArt, dtfLayer, drawAt, inkLayer, INKS } from '../production-pack.js';
 import { nextSku, uniqueSlug } from '../products.js';
 import { autoPublish, getLoja, linkVenda } from '../store-publish.js';
@@ -17,6 +17,16 @@ const BACK_AREAS = [['total', 'Costas inteiras (justo, sem manga)'], ['principal
 const FRONT_AREAS = [['peito-esquerdo', 'Peito esquerdo'], ['peito-central', 'Peito central'], ['peito-direito', 'Peito direito'], ['principal', 'Estampa grande (A3)'], ['total', 'Frente inteira (justo)']];
 
 export const photosOf = (peca) => db.photos.filter((p) => p.peca === peca).toArray();
+
+// Cor da camisa (nome cadastrado) → tom para pintar o molde profissional.
+export const COR_HEX = {
+  preta: '#151515', branca: '#f2f1ed', 'off-white': '#ebe5d6', bege: '#d6c4a3', areia: '#c8ad86', marrom: '#6a4632', vermelha: '#b3232c', vinho: '#5d1f2a',
+  'azul-marinho': '#1c2947', 'azul royal': '#2445b5', 'azul-claro': '#a3c4e3', 'verde militar': '#4b5a3c', 'verde-água': '#93d5c3', 'cinza chumbo': '#4a4d51',
+  cinza: '#9b9a97', pink: '#e2337f', 'rosa claro': '#f1cad3', lilás: '#b9a2d4', amarela: '#efcb3a', laranja: '#e2762b',
+};
+export const corHex = (nome) => COR_HEX[String(nome || '').toLowerCase()] || null;
+// cores reais das fotos (o molde serve para qualquer cor e não entra nesta lista)
+export const coresDe = (photos, base) => [...new Set([...photos.filter((p) => !p.molde).map((p) => p.cor), ...(base?.cores || [])].filter(Boolean))];
 
 const lum = (rgb) => (rgb ? 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] : 128);
 // A luz do estúdio deixa camisa clara amarelada/escura na foto: a cor cadastrada decide.
@@ -59,8 +69,9 @@ export async function applyArtFlow(base) {
   if (!photos.length) { toast('Esta peça ainda não tem fotos de modelo. Importe em Mockups → Peças reais.', 'err'); return; }
   const designs = await db.designs.orderBy('updatedAt').reverse().toArray();
   if (!designs.length) { toast('Envie uma arte primeiro (Criar Arte ou Gerador IA).', 'err'); return; }
-  const cores = [...new Set(photos.map((p) => p.cor))];
-  const count = (c, back) => photos.filter((p) => p.cor === c && isBack(p) === back).length;
+  const cores = coresDe(photos, base);
+  const moldes = photos.filter((p) => p.molde);
+  const count = (c, back) => photos.filter((p) => !p.molde && p.cor === c && isBack(p) === back).length + moldes.filter((p) => isBack(p) === back && corHex(c)).length;
   const dOpt = (sel) => `<option value="">— nenhuma —</option>${designs.map((d) => `<option value="${d.id}" ${d.id === sel ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}`;
   const aOpt = (list) => list.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
   let read = null;
@@ -87,7 +98,7 @@ export async function applyArtFlow(base) {
       const upd = () => {
         const back = +$('#aBack', m).value, front = +$('#aFront', m).value;
         const sel = $$('#cores input:checked', m).map((i) => i.value);
-        const n = photos.filter((p) => sel.includes(p.cor) && (isBack(p) ? back : front)).length;
+        const n = photos.filter((p) => !p.molde && sel.includes(p.cor) && (isBack(p) ? back : front)).length + moldes.filter((p) => (isBack(p) ? back : front)).length * sel.filter(corHex).length;
         $('#aInfo', m).textContent = n ? `Vai gerar ${n} mockup(s).` : 'Escolha ao menos uma arte e uma cor com foto daquele lado.';
         const nm = $('#nome', m);
         if (!nm.dataset.touched) nm.value = `${(PECAS[base.peca] || 'Oversized').split(' ')[0]} ${designs.find((d) => d.id === (back || front))?.name || ''}`.trim();
@@ -106,23 +117,29 @@ export async function applyArtFlow(base) {
  * Retorna o id do produto.
  */
 export async function createProductWithArt(base, opts, onProgress = () => {}) {
-  const photos = opts.semOutras ? [] : (await photosOf(base.peca)).filter((p) => opts.cores.includes(p.cor) && (isBack(p) ? opts.back : opts.front) && p.id !== opts.excludePhoto);
-  if (!photos.length && !opts.leadMockups?.length) throw new Error('Nenhuma foto com arte para gerar.');
+  const todas = opts.semOutras ? [] : (await photosOf(base.peca)).filter((p) => (isBack(p) ? opts.back : opts.front) && p.id !== opts.excludePhoto);
+  // molde profissional: uma foto por cor escolhida; fotos comuns: as da cor
+  const jobs = [
+    ...todas.filter((p) => p.molde).flatMap((p) => opts.cores.filter(corHex).map((cor) => ({ photo: p, cor, shirtColor: cor.toLowerCase() === 'branca' ? null : corHex(cor) }))),
+    ...todas.filter((p) => !p.molde && opts.cores.includes(p.cor)).map((p) => ({ photo: p, cor: p.cor })),
+  ];
+  if (!jobs.length && !opts.leadMockups?.length) throw new Error('Nenhuma foto com arte para gerar.');
   const vBack = opts.back ? await db.versions.get((await db.designs.get(opts.back)).currentVersionId) : null;
   const vFront = opts.front ? await db.versions.get((await db.designs.get(opts.front)).currentVersionId) : null;
   // lado da arte principal primeiro (capa), cor por cor
-  const side = (p) => (isBack(p) === !!opts.back ? 0 : 1);
-  photos.sort((a, b) => side(a) - side(b) || opts.cores.indexOf(a.cor) - opts.cores.indexOf(b.cor));
+  const side = (j) => (isBack(j.photo) === !!opts.back ? 0 : 1);
+  jobs.sort((a, b) => side(a) - side(b) || (!!b.photo.molde - !!a.photo.molde) || opts.cores.indexOf(a.cor) - opts.cores.indexOf(b.cor));
   const cache = new Map();
   const mockupIds = [...(opts.leadMockups || [])];
   let i = 0;
-  for (const photo of photos) {
-    onProgress(`${++i}/${photos.length} · ${photo.cor} (${isBack(photo) ? 'costas' : 'frente'})`);
+  for (const { photo, cor, shirtColor } of jobs) {
+    onProgress(`${++i}/${jobs.length} · ${cor} (${isBack(photo) ? 'costas' : 'frente'})${photo.molde ? ' · molde' : ''}`);
     if (needsAnalysis(photo)) await detectPhoto(photo);
     const back = isBack(photo);
     const v = back ? vBack : vFront;
     const area = back ? opts.pBack : opts.pFront;
-    const { img: art, mode } = await artFor(v, tomDe(photo), opts.auto, cache);
+    const { img: art, mode } = await artFor(v, tomDe({ ...photo, cor }), opts.auto, cache);
+    const molde = photo.molde ? await loadMolde(photo) : null;
     const pImg = await loadImage(photo.image);
     const mask = photo.shirt?.ok ? await loadImage(photo.shirt.mask) : null;
     const torsoMask = photo.shirt?.torsoMask ? await loadImage(photo.shirt.torsoMask) : null;
@@ -130,16 +147,17 @@ export async function createProductWithArt(base, opts, onProgress = () => {}) {
     const layer = { area, x: 0, y: 0, scale, rot: 0, opacity: 1, blend: 'normal', fabric: 0.6, warp: 0.5, tint: null, clip: true, yaw: null };
     const c = document.createElement('canvas');
     c.width = photo.w; c.height = photo.h;
-    renderPhotoMockup(c.getContext('2d'), { photo, img: pImg, mask, torsoMask, layers: [{ ...layer, img: art }] }, { scale: 1 });
+    const inkDark = mode === 'preta' || (mode === 'cor' && cache.get(v.id)?.info.inkDark);
+    renderPhotoMockup(c.getContext('2d'), { photo, img: pImg, mask, torsoMask, molde, shirtColor, layers: [{ ...layer, shirtColor, inkDark, img: art }] }, { scale: 1 });
     const t = document.createElement('canvas');
     t.width = 480; t.height = Math.round(480 * (photo.h / photo.w));
     t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
     const d = await db.designs.get(v.designId);
     const now = Date.now();
     mockupIds.push(await db.mockups.add({
-      name: `${d.name} · ${PECAS[base.peca] || 'Camiseta'} ${photo.cor} (${back ? 'costas' : 'frente'})`, source: 'photo', photoId: photo.id, photoName: `${photo.cor}`,
-      designId: v.designId, garment: 'camiseta', view: back ? 'costas' : 'frente', color: photo.cor, bg: null, inkMode: mode,
-      layers: [{ ...layer, versionId: v.id }], render: await canvasToBlob(c, 'image/jpeg', 0.9), thumb: await canvasToBlob(t, 'image/jpeg', 0.85), createdAt: now, updatedAt: now,
+      name: `${d.name} · ${PECAS[base.peca] || 'Camiseta'} ${cor} (${back ? 'costas' : 'frente'})${photo.molde ? ' · estúdio' : ''}`, source: 'photo', photoId: photo.id, photoName: `${cor}`,
+      designId: v.designId, garment: 'camiseta', view: back ? 'costas' : 'frente', color: cor, bg: null, inkMode: mode,
+      layers: [{ ...layer, shirtColor, versionId: v.id }], render: await canvasToBlob(c, 'image/jpeg', 0.9), thumb: await canvasToBlob(t, 'image/jpeg', 0.85), createdAt: now, updatedAt: now,
     }));
     await new Promise((r) => setTimeout(r));
   }
@@ -210,7 +228,7 @@ export async function launchFlow(designId, onProgress = () => {}) {
   const ids = [];
   for (const bid of o.bases) {
     const base = bases.find((b) => b.id === bid);
-    const cores = [...new Set(allPhotos.filter((p) => p.peca === base.peca).map((p) => p.cor))];
+    const cores = coresDe(allPhotos.filter((p) => p.peca === base.peca), base);
     const opts = lado === 'costas'
       ? { back: designId, pBack: area, front: o.extra, pFront: 'peito-esquerdo' }
       : { front: designId, pFront: area, back: o.extra, pBack: 'costas-superior' };

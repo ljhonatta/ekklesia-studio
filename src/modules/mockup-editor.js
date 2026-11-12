@@ -2,7 +2,7 @@ import { db, artBlob, currentVersions } from '../db.js';
 import { $, $$, esc, objURL, loadImage, toast, modal, download, slugify, canvasToBlob } from '../util.js';
 import { GARMENTS, VIEWS, COLORS, garmentById, areasFor, defaultArea, W as VW, H as VH } from '../garments.js';
 import { renderMockup, BACKGROUNDS } from '../compose.js';
-import { renderPhotoMockup, photoAreas, photoLabel, detectPhoto, needsAnalysis, estimateYaw, dragDelta, isBack as isBackPhoto, TIPOS_FOTO, VISTAS_FOTO } from '../photos.js';
+import { renderPhotoMockup, photoAreas, photoLabel, detectPhoto, needsAnalysis, estimateYaw, dragDelta, isBack as isBackPhoto, loadMolde, TIPOS_FOTO, VISTAS_FOTO } from '../photos.js';
 import { ICONS } from '../ui.js';
 
 const newLayer = (area) => ({ area, x: 0, y: 0, scale: 1, rot: 0, opacity: 1, blend: 'normal', fabric: 0.6, warp: 0.5, tint: null, clip: true, yaw: null });
@@ -42,8 +42,9 @@ export async function render(el, [param], query) {
   if (st.source === 'vector' && isNew) st.layer.area = defaultArea('frente');
 
   let design = null, version = null, img = null;
-  let photo = null, photoImg = null, photoMask = null, torsoMask = null;
+  let photo = null, photoImg = null, photoMask = null, torsoMask = null, photoMolde = null;
   const loadMasks = async (p) => {
+    photoMolde = p?.molde ? await loadMolde(p) : null;
     photoMask = p?.shirt?.ok && p.shirt.mask ? await loadImage(p.shirt.mask) : null;
     torsoMask = p?.shirt?.ok && p.shirt.torsoMask ? await loadImage(p.shirt.torsoMask) : null;
   };
@@ -146,6 +147,9 @@ export async function render(el, [param], query) {
           <div class="field"><span>Cor da arte</span>
             <div class="tints" id="tints"><button data-tint="" title="Cores originais">Original</button>${TINTS.map(([h, l]) => `<button data-tint="${h}" title="${l}" style="--c:${h}"></button>`).join('')}<label class="tint-custom" title="Outra cor"><input type="color" id="tintColor"></label></div>
           </div>
+          <div class="field" id="shirtBox" hidden><span>Cor da camisa (molde)</span>
+            <div class="tints" id="shirtTints"><button data-shirt="" title="Branca original">Original</button>${COLORS.map((c) => `<button data-shirt="${c.hex}" title="${c.label}" style="--c:${c.hex}"></button>`).join('')}<label class="tint-custom" title="Outra cor"><input type="color" id="shirtColor"></label></div>
+          </div>
           <label class="toggle small photo-only"><input type="checkbox" id="clipToggle" checked><span>Só no tronco da peça (não vaza para mangas, braço ou fundo)</span></label>
           <div class="field photo-only"><span>Tinta</span>
             <div class="seg seg-wrap" id="blendSeg"><button data-blend="normal">Normal</button><button data-blend="multiply">Absorvida (peça clara)</button></div>
@@ -212,7 +216,7 @@ export async function render(el, [param], query) {
   ro.observe(wrap);
 
   const opts = () => (isPhoto()
-    ? { photo, img: photoImg, mask: photoMask, torsoMask, layers: img ? [{ ...st.layer, tint: null, img: artImg() }] : [], showArea: true, showAllAreas: showAll, showMask: showAll }
+    ? { photo, img: photoImg, mask: photoMask, torsoMask, molde: photoMolde, layers: img ? [{ ...st.layer, tint: null, img: artImg() }] : [], showArea: true, showAllAreas: showAll, showMask: showAll }
     : { garment: st.garment, view: st.view, color: st.color, bg: st.bg, layers: img ? [{ ...st.layer, img: artImg() }] : [] });
   const draw = (c, scale, guides, fast = false) => (isPhoto() ? renderPhotoMockup(c, opts(), { scale, guides, fast }) : renderMockup(c, opts(), { scale, guides }));
 
@@ -247,6 +251,8 @@ export async function render(el, [param], query) {
 
   function syncControls() {
     const ph = isPhoto();
+    $('#shirtBox', el).hidden = !(ph && photo?.molde);
+    $$('[data-shirt]', el).forEach((b) => b.classList.toggle('active', (b.dataset.shirt || null) === (st.layer.shirtColor || null)));
     $$('[data-src]', el).forEach((b) => b.classList.toggle('active', b.dataset.src === (ph ? 'photo' : 'vector')));
     $('#leftPhoto', el).hidden = !ph && st.source !== 'photo';
     $('#leftVector', el).hidden = ph || st.source === 'photo';
@@ -329,6 +335,10 @@ export async function render(el, [param], query) {
   }
 
   // ---- eventos ----
+  el.addEventListener('click', (e) => {
+    const sb = e.target.closest('[data-shirt]');
+    if (sb) { st.layer.shirtColor = sb.dataset.shirt || null; syncControls(); paint(); }
+  });
   el.addEventListener('click', async (e) => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -384,6 +394,7 @@ export async function render(el, [param], query) {
   $('#fVista', el).addEventListener('change', (e) => { filterVista = e.target.value; drawPhotoGrid(); syncControls(); });
   el.addEventListener('input', (e) => {
     if (e.target.id === 'tintColor') { st.layer.tint = e.target.value; update(); return; }
+    if (e.target.id === 'shirtColor') { st.layer.shirtColor = e.target.value; syncControls(); paint(); return; }
     const k = e.target.dataset?.k;
     if (!k) return;
     st.layer[k] = +e.target.value;
