@@ -22,14 +22,17 @@ function setStatus(s) { status = { ...status, ...s }; listeners.forEach((fn) => 
 export const getStatus = () => status;
 
 // ---------- ids únicos entre aparelhos + marcação de mudanças ----------
-let applyingRemote = false;
+// Gravações vindas da nuvem acontecem numa transação marcada: só ELAS não ganham
+// id novo nem updatedAt. (Antes era uma chave global: um produto salvo pela pessoa
+// bem nesse instante ficava com id curto, 1, 2, 3…, e colidia com outro aparelho.)
+const isRemoteTx = () => !!db.constructor.currentTransaction?.__remote;
 let timer = 0;
 export function installHooks() {
   for (const t of SYNC_TABLES) {
     const table = db.table(t);
     const auto = table.schema.primKey.auto;
     table.hook('creating', function (pk, obj) {
-      if (applyingRemote) return undefined;
+      if (isRemoteTx()) return undefined;
       if (typeof obj === 'object' && obj && !obj.updatedAt) obj.updatedAt = Date.now();
       schedule();
       if (auto && pk === undefined) return Date.now() * 1000 + Math.floor(Math.random() * 1000);
@@ -37,11 +40,11 @@ export function installHooks() {
     });
     // toda alteração ganha updatedAt (decide conflitos e evita reler o que não mudou)
     table.hook('updating', (mods) => {
-      if (applyingRemote) return undefined;
+      if (isRemoteTx()) return undefined;
       schedule();
       return mods.updatedAt ? undefined : { updatedAt: Date.now() };
     });
-    table.hook('deleting', () => { if (!applyingRemote) schedule(); });
+    table.hook('deleting', () => { if (!isRemoteTx()) schedule(); });
   }
 }
 export function schedule(ms = 4000) {
@@ -239,6 +242,7 @@ async function syncOnce(token, prog) {
   }
 
   // ---- baixar ----
+  const skipped = new Set(); // não aplicados (editados aqui no meio do caminho): ficam para a próxima
   if (toPull.length) {
     const pulled = [];
     let n = 0;
@@ -267,19 +271,28 @@ async function syncOnce(token, prog) {
       }
     }
     for (const [id, slug, linkCompra] of fixSlugs) await db.products.update(id, { slug, linkCompra });
-    applyingRemote = true;
-    try {
-      await db.transaction('rw', SYNC_TABLES.map((t) => db.table(t)), async () => {
-        for (const x of pulled) {
-          const { table } = parsePath(x.path);
-          await db.table(table).put(decodeValue(x.row, (sha) => got.get(sha)));
-        }
-        for (const x of toPull.filter((y) => y.del)) {
-          const { table, key } = parsePath(x.path);
-          await db.table(table).delete(key);
-        }
-      });
-    } finally { applyingRemote = false; }
+    // Enquanto baixava, a pessoa pode ter salvo o mesmo item (ou criado/apagado):
+    // nunca grava a versão da nuvem por cima de uma edição feita depois da foto inicial.
+    await db.transaction('rw', SYNC_TABLES.map((t) => db.table(t)), async (tx) => {
+      tx.__remote = true;
+      const editadoAqui = async (x) => {
+        const { table, key } = parsePath(x.path);
+        const now = await db.table(table).get(key);
+        const antes = local.get(x.path)?.row;
+        if (!antes) return !!now; // não existia na foto inicial e agora existe: criado agora
+        return !now || stamp(now) !== stamp(antes);
+      };
+      for (const x of pulled) {
+        if (await editadoAqui(x)) { skipped.add(x.path); continue; }
+        const { table } = parsePath(x.path);
+        await db.table(table).put(decodeValue(x.row, (sha) => got.get(sha)));
+      }
+      for (const x of toPull.filter((y) => y.del)) {
+        if (await editadoAqui(x)) { skipped.add(x.path); continue; }
+        const { table, key } = parsePath(x.path);
+        await db.table(table).delete(key);
+      }
+    });
   }
 
   // ---- enviar ----
@@ -316,6 +329,8 @@ async function syncOnce(token, prog) {
     }
   }
   for (const x of toPull) { if (x.del) delete newBase[x.path]; }
+  // o que não foi aplicado continua com a base antiga: na próxima rodada vira conflito e vence o mais recente
+  for (const p of skipped) { if (base[p]) newBase[p] = base[p]; else delete newBase[p]; }
   setState({ base: newBase, at: Date.now() });
   if (toPull.length) window.dispatchEvent(new CustomEvent('data-synced', { detail: { pulled: toPull.length } }));
   return { pushed: toPush.length, pulled: toPull.length };
