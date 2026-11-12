@@ -311,9 +311,10 @@ function tirarDaFila(id, n) {
 // ---------- primeira vez neste aparelho ----------
 async function primeiraVez(prog) {
   let meta = await F.getMeta();
-  if (!meta) {
-    meta = await F.claimMeta(device());
-    if (meta.mine) {
+  if (!meta) meta = await F.claimMeta(device());
+  // a mudança é deste aparelho (ou ficou parada mais de 10 min: este assume)
+  if (meta.mine || (!meta.pronto && (meta.dev === device() || Date.now() - meta.migratedAt > 600000))) {
+    {
       // este aparelho faz a mudança: puxa o que estava na nuvem antiga e sobe tudo
       prog('Mudando para a nuvem nova: lendo a nuvem antiga…');
       try { const L = await import('./sync-legacy.js'); await L.syncNow({ onProgress: prog }); } catch (e) { console.warn('nuvem antiga', e); }
@@ -324,12 +325,15 @@ async function primeiraVez(prog) {
       }
       lsSet(PEND_KEY, p);
       await push(prog);
-      await F.setMeta({ pronto: true, prontoEm: Date.now() });
+      await F.setMeta({ pronto: true, prontoEm: Date.now(), dev: device() });
       return;
     }
   }
   // outro aparelho fez a mudança: espera terminar e fica igual à nuvem
-  while (!meta.pronto) { prog('Outro aparelho está subindo os dados para a nuvem nova…'); await wait(8000); meta = await F.getMeta(); }
+  while (!meta.pronto) {
+    if (Date.now() - meta.migratedAt > 600000) return primeiraVez(prog); // parou no meio: este assume
+    prog('Outro aparelho está subindo os dados para a nuvem nova…'); await wait(8000); meta = await F.getMeta();
+  }
   prog('Trazendo os dados da nuvem…');
   const all = (await F.getAll()).filter((d) => parseId(d.id));
   await applyRemote(all, prog);
