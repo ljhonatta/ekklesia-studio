@@ -700,3 +700,4 @@ body.locked .app, body.locked .toasts { display: none; }
 .mockup-card:hover .card-del, .card-del:focus-visible { opacity: 1; }
 @media (hover: none) { .card-del { opacity: 1; } }
 .card-del:hover { background: var(--danger); }
+.cloud-acc .v-login { margin: 12px 0; background: transparent; }

@@ -3,7 +3,7 @@ import { $, esc, fmtBytes, toast, confirmDialog, download } from '../util.js';
 import { pageHead, ICONS } from '../ui.js';
 import { getLogo, saveLogo, processLogo, tinted } from '../brand.js';
 import { getPresets, savePresets, PRESET_GROUPS, DEFAULT_PRESETS } from '../presets.js';
-import { syncNow, onStatus, getConf, setConf } from '../sync.js';
+import { syncNow, onStatus, getConf, setConf, pendentes } from '../sync.js';
 import { logout } from '../auth.js';
 
 const BRAND_FIELDS = [
@@ -25,7 +25,8 @@ export async function render(el) {
     <section class="panel cloud-panel">
       <div class="section-head"><h3>Nuvem: o Estúdio igual no celular e no computador</h3>
         <div class="actions-row tight"><button class="btn primary sm" id="syncBtn">Sincronizar agora</button><button class="btn ghost sm" id="logoutBtn">Sair da conta</button></div></div>
-      <p class="hint">Artes, mockups, produtos, fotos das peças e configurações ficam salvos no repositório <b>privado</b> do GitHub e sincronizam sozinhos entre os aparelhos. Em cada aparelho, cole o mesmo token uma vez.</p>
+      <p class="hint">Produtos, artes, mockups, fotos das peças e configurações ficam no <b>Firebase</b> da marca e aparecem na hora nos outros aparelhos. Vale sempre a última mudança; o que você apaga fica apagado em todos. As imagens ficam no repositório <b>privado</b> do GitHub (precisa do token). Em cada aparelho: entre com o e-mail da marca e cole o token uma vez.</p>
+      <div id="cloudAcc" class="cloud-acc"></div>
       <div class="form-grid two">
         <label class="field"><span>Token do GitHub (o mesmo da Loja online)</span><span class="secret"><input type="password" id="cloudToken" autocomplete="off" placeholder="github_pat_..."><button type="button" class="btn ghost sm" id="tokShow">Mostrar</button><button type="button" class="btn ghost sm" id="tokCopy">Copiar</button></span></label>
         <label class="field"><span>Repositório de dados (privado)</span><input id="cloudRepo"></label>
@@ -164,7 +165,7 @@ export async function render(el) {
     const line = $('#syncLine', el);
     if (!line || !el.isConnected) { setTimeout(() => unsub?.()); return; }
     line.className = `sync-line ${s.state}`;
-    line.textContent = s.state === 'ok' ? `Tudo sincronizado às ${new Date(s.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.` : s.state === 'running' ? (s.msg || 'Sincronizando…') : s.state === 'error' ? `Erro: ${s.msg}` : s.state === 'off' ? 'Nuvem desligada: cole o token para ligar.' : s.state === 'offline' ? 'Sem internet: as mudanças ficam neste aparelho e sobem quando voltar.' : '';
+    line.textContent = s.state === 'ok' ? `Tudo sincronizado às ${new Date(s.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.` : s.state === 'running' ? (s.msg || 'Sincronizando…') : s.state === 'error' ? `Erro: ${s.msg}` : s.state === 'off' ? (s.msg || 'Nuvem desligada.') : s.state === 'offline' ? 'Sem internet: as mudanças ficam neste aparelho e sobem quando voltar.' : '';
   });
   $('#syncBtn', el).addEventListener('click', async (e) => {
     const b = e.currentTarget;
@@ -182,6 +183,20 @@ export async function render(el) {
     b.disabled = false;
   });
   $('#logoutBtn', el).addEventListener('click', logout);
+  // conta da nuvem (Firebase): a mesma do painel de Vendas
+  const F = await import('../fb-admin.js');
+  const { loginView, verifyView } = await import('./vendas.js');
+  const acc = $('#cloudAcc', el);
+  const offUser = F.onUser((u) => {
+    if (!el.isConnected) { setTimeout(() => offUser()); return; }
+    if (!u) loginView(acc, F, 'Entrar na nuvem (e-mail da marca)');
+    else if (!F.isAdmin(u)) verifyView(acc, F, u);
+    else {
+      const n = pendentes();
+      acc.innerHTML = `<p class="hint">Conectado como <b>${esc(u.email)}</b>.${n ? ` ${n} mudança(s) deste aparelho esperando para subir.` : ''} <button class="link" id="fbOut">Sair da nuvem</button></p>`;
+      $('#fbOut', acc).onclick = () => F.sair();
+    }
+  });
   $('#tokShow', el).addEventListener('click', (e) => { const i = $('#cloudToken', el); i.type = i.type === 'password' ? 'text' : 'password'; e.currentTarget.textContent = i.type === 'password' ? 'Mostrar' : 'Ocultar'; });
   $('#tokCopy', el).addEventListener('click', async () => {
     const v = $('#cloudToken', el).value.trim();

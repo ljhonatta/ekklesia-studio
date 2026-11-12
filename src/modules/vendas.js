@@ -67,9 +67,9 @@ export async function render(el) {
 }
 
 // ---------- acesso ----------
-function loginView(box, F) {
+export function loginView(box, F, titulo = 'Entrar no painel de vendas') {
   box.innerHTML = `<section class="panel v-login form-stack">
-    <h3>Entrar no painel de vendas</h3>
+    <h3>${titulo}</h3>
     <p class="hint">Use o e-mail da marca (${esc(F.ADMINS[0])}). Na primeira vez, clique em <b>Criar acesso</b>: chega um e-mail de confirmação; depois de confirmar, o painel abre.</p>
     <label class="field"><span>E-mail</span><input id="vEmail" type="email" value="${esc(F.ADMINS[0])}" autocomplete="username"></label>
     <label class="field"><span>Senha</span><input id="vSenha" type="password" autocomplete="current-password"></label>
@@ -81,7 +81,7 @@ function loginView(box, F) {
   $('#vForgot', box).onclick = async () => { try { await F.esqueci(val()[0]); toast('Link de nova senha enviado para o e-mail.'); } catch (e) { toast(e.message, 'err'); } };
 }
 
-function verifyView(box, F, u) {
+export function verifyView(box, F, u) {
   const isMarca = F.ADMINS.includes((u.email || '').toLowerCase());
   box.innerHTML = `<section class="panel v-login form-stack">
     <h3>${isMarca ? 'Confirme o e-mail' : 'Sem acesso'}</h3>

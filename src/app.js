@@ -116,7 +116,7 @@ const fmtHour = (t) => new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit'
 onStatus((s) => {
   const el = $('#syncStatus');
   if (!el) return;
-  const map = { running: ['run', s.msg || 'Sincronizando…'], ok: ['ok', `Nuvem: salvo às ${s.at ? fmtHour(s.at) : ''}`], error: ['err', 'Nuvem: erro (ver Configurações)'], off: ['off', 'Nuvem desligada'], offline: ['off', 'Sem internet: salvo aqui'], idle: ['off', 'Nuvem…'] };
+  const map = { running: ['run', s.msg || 'Sincronizando…'], ok: ['ok', `Nuvem: salvo às ${s.at ? fmtHour(s.at) : ''}`], error: ['err', 'Nuvem: erro (ver Configurações)'], off: ['off', 'Nuvem: entrar (Configurações)'], offline: ['off', 'Sem internet: salvo aqui'], idle: ['off', 'Nuvem…'] };
   const [cls, txt] = map[s.state] || map.idle;
   el.className = `sync-status ${cls}`;
   el.textContent = txt;

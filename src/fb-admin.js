@@ -22,7 +22,7 @@ const app = initializeApp({
 }, 'admin');
 const auth = getAuth(app);
 auth.languageCode = 'pt';
-const fs = getFirestore(app);
+export const fs = getFirestore(app);
 
 const MSG = {
   'auth/invalid-credential': 'E-mail ou senha incorretos.',
