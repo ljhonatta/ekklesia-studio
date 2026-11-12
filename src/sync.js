@@ -44,7 +44,8 @@ export function installHooks() {
       schedule();
       return mods.updatedAt ? undefined : { updatedAt: Date.now() };
     });
-    table.hook('deleting', () => { if (!isRemoteTx()) schedule(); });
+    // apagado aqui: guarda a hora (decide "apagou x editou" contra outro aparelho)
+    table.hook('deleting', (pk) => { if (isRemoteTx()) return; marcarApagado(pathOf(t, pk)); schedule(); });
   }
 }
 export function schedule(ms = 4000) {
@@ -102,6 +103,9 @@ async function pool(items, n, fn) {
 
 // ---------- serialização ----------
 const pathOf = (t, key) => `db/${t}/${encodeURIComponent(String(key))}.json`;
+const DEL_KEY = 'ekk-sync-del';
+const apagados = () => JSON.parse(localStorage.getItem(DEL_KEY) || '{}');
+function marcarApagado(path) { const d = apagados(); d[path] = Date.now(); localStorage.setItem(DEL_KEY, JSON.stringify(d)); }
 function parsePath(p) {
   const m = p.match(/^db\/([^/]+)\/(.+)\.json$/);
   if (!m) return null;
@@ -213,7 +217,7 @@ async function syncOnce(token, prog) {
   }
   const head = await gh(token, `${R}/git/commits/${ref.object.sha}`);
   const tree = await gh(token, `${R}/git/trees/${head.tree.sha}?recursive=1`);
-  const remote = new Map(tree.tree.filter((x) => x.type === 'blob' && (x.path.startsWith('db/') || x.path.startsWith('blobs/'))).map((x) => [x.path, x.sha]));
+  const remote = new Map(tree.tree.filter((x) => x.type === 'blob' && (x.path.startsWith('db/') || x.path.startsWith('blobs/') || x.path.startsWith('db-del/'))).map((x) => [x.path, x.sha]));
   const state = getState();
   const base = state.base || {};
   prog('Lendo os dados deste aparelho…');
@@ -232,11 +236,28 @@ async function syncOnce(token, prog) {
     else if (rChanged && !lChanged) toPull.push(Rs ? { path: p, sha: Rs } : { path: p, del: true });
     else conflicts.push(p);
   }
-  // conflito: vence a versão mais recente; apagado x editado → fica o editado
+  // conflito: vence a versão mais recente. Apagado aqui x editado lá: vale o que
+  // aconteceu por último (a hora do apagar fica guardada). Sem hora: fica o editado.
+  const dels = apagados();
   for (const p of conflicts) {
     const L = local.get(p), Rs = remote.get(p);
-    if (!L) { toPull.push({ path: p, sha: Rs }); continue; }
-    if (!Rs) { toPush.push({ path: p, text: L.text }); continue; }
+    if (!L) {
+      if (dels[p]) {
+        const rr = JSON.parse(new TextDecoder().decode(fromB64((await gh(token, `${R}/git/blobs/${Rs}`)).content)));
+        if (dels[p] > stamp(rr)) { toPush.push({ path: p, del: true }); continue; }
+        toPull.push({ path: p, sha: Rs, row: rr }); continue;
+      }
+      toPull.push({ path: p, sha: Rs }); continue;
+    }
+    if (!Rs) {
+      // apagado lá x editado aqui: a hora do apagar fica na nuvem (db-del/)
+      const tomb = remote.get(p.replace(/^db\//, 'db-del/'));
+      if (tomb) {
+        const at = JSON.parse(new TextDecoder().decode(fromB64((await gh(token, `${R}/git/blobs/${tomb}`)).content))).at || 0;
+        if (at > stamp(L.row)) { toPull.push({ path: p, del: true }); continue; }
+      }
+      toPush.push({ path: p, text: L.text }); continue;
+    }
     const rr = JSON.parse(new TextDecoder().decode(fromB64((await gh(token, `${R}/git/blobs/${Rs}`)).content)));
     if (stamp(rr) > stamp(L.row)) toPull.push({ path: p, sha: Rs, row: rr }); else toPush.push({ path: p, text: L.text });
   }
@@ -311,7 +332,14 @@ async function syncOnce(token, prog) {
     n = 0;
     await pool(toPush, 4, async (x) => {
       prog(`Enviando registros ${++n} de ${toPush.length}…`);
-      if (x.del) { if (remote.has(x.path)) entries.push({ path: x.path, mode: '100644', type: 'blob', sha: null }); return; }
+      const tombPath = x.path.replace(/^db\//, 'db-del/');
+      if (x.del) {
+        if (remote.has(x.path)) entries.push({ path: x.path, mode: '100644', type: 'blob', sha: null });
+        const t = await gh(token, `${R}/git/blobs`, { method: 'POST', body: JSON.stringify({ content: toB64(enc.encode(JSON.stringify({ at: apagados()[x.path] || Date.now() }))), encoding: 'base64' }) });
+        entries.push({ path: tombPath, mode: '100644', type: 'blob', sha: t.sha });
+        return;
+      }
+      if (remote.has(tombPath)) entries.push({ path: tombPath, mode: '100644', type: 'blob', sha: null }); // voltou a existir
       const b = await gh(token, `${R}/git/blobs`, { method: 'POST', body: JSON.stringify({ content: toB64(enc.encode(x.text)), encoding: 'base64' }) });
       entries.push({ path: x.path, mode: '100644', type: 'blob', sha: b.sha });
     });
@@ -332,6 +360,10 @@ async function syncOnce(token, prog) {
   // o que não foi aplicado continua com a base antiga: na próxima rodada vira conflito e vence o mais recente
   for (const p of skipped) { if (base[p]) newBase[p] = base[p]; else delete newBase[p]; }
   setState({ base: newBase, at: Date.now() });
+  // marcas de apagado antigas (já resolvidas) saem depois de 30 dias
+  const d2 = apagados(), lim = Date.now() - 30 * 864e5;
+  for (const [p, t] of Object.entries(d2)) if (t < lim || (!newBase[p] && !local.has(p) && t < Date.now() - 864e5)) delete d2[p];
+  localStorage.setItem(DEL_KEY, JSON.stringify(d2));
   if (toPull.length) window.dispatchEvent(new CustomEvent('data-synced', { detail: { pulled: toPull.length } }));
   return { pushed: toPush.length, pulled: toPull.length };
 }
